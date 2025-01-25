@@ -1,0 +1,125 @@
+const { ethers } = require("hardhat");
+
+const CUSTODIAN_ID = 1;
+const FACILITATOR_ID = 2;
+const STATE_CHANGER_ID = 3;
+
+function getSelector(signature) {
+  return ethers.id(signature).slice(0, 10);
+}
+
+async function setUpAccessManagerToken(
+  accessManager,
+  custodian,
+  facilitator,
+  state_changer,
+  remoraToken,
+  allowlist
+) {
+  //sets up two roles by default
+  await accessManager.labelRole(CUSTODIAN_ID, "CUSTODIAN"); //manages upgrades, freezing, allowing users
+  await accessManager.labelRole(FACILITATOR_ID, "FACILITATOR"); //manages transfers, and adminClaimRent
+  await accessManager.labelRole(STATE_CHANGER_ID, "STATE_CHANGER"); //manages pausing and burning
+
+  const custodian_selectors = [
+    // add delay in real use
+    getSelector("mint(address,uint256)"),
+    getSelector("_authorizeUpgrade(address)"),
+    getSelector("updateAllowList(address)"),
+    getSelector("setFeePercentage(uint256)"),
+    getSelector("changeStablecoin(address)"),
+    getSelector("changeWallet(address)"),
+    getSelector("freezeHolder(address)"),
+    getSelector("unFreezeHolder(address)"),
+    getSelector("withdraw(bool,uint256)"),
+  ];
+
+  const custodian_allowlist_selectors = [
+    getSelector("_authorizeUpgrade(address)"),
+    getSelector("allowUser(address)"),
+    getSelector("disallowUser(address)"),
+  ];
+
+  const facilitator_selectors = [
+    getSelector("transferFrom(address,address,uint256)"),
+    getSelector("transfer(address,uint256)"),
+    getSelector("distributeRentalPayments"),
+    getSelector("adminClaimRent(address,bool,bool,uint256)"),
+    getSelector("adminTransferFrom(address,address,uint256)"),
+    getSelector("burnFrom(address,uint256)"),
+  ];
+
+  const state_selectors = [
+    getSelector("pause()"),
+    getSelector("unpause()"),
+    getSelector("enableBurning()"),
+    getSelector("disableBurning()"),
+  ];
+
+  //set up roles for RWAToken
+  await accessManager.setTargetFunctionRole(
+    remoraToken.target,
+    custodian_selectors,
+    CUSTODIAN_ID
+  );
+
+  await accessManager.setTargetFunctionRole(
+    remoraToken.target,
+    facilitator_selectors,
+    FACILITATOR_ID
+  );
+
+  await accessManager.setTargetFunctionRole(
+    remoraToken.target,
+    state_selectors,
+    STATE_CHANGER_ID
+  );
+
+  //set up role for allowlist
+  await accessManager.setTargetFunctionRole(
+    allowlist.target,
+    custodian_allowlist_selectors,
+    CUSTODIAN_ID
+  );
+
+  await accessManager.grantRole(CUSTODIAN_ID, custodian, 0);
+  await accessManager.grantRole(FACILITATOR_ID, facilitator, 0);
+  await accessManager.grantRole(STATE_CHANGER_ID, state_changer, 0);
+}
+
+async function setUpAccessManagerIntermediary( // only call after setting up token
+  accessManager,
+  intermediary,
+  custodian,
+  facilitator
+) {
+  const custodian_intermediary_selectors = [
+    getSelector("_authorizeUpgrade(address)"),
+  ];
+
+  const facilitator_intermediary_selectors = [
+    getSelector(
+      "facilitateSwap(address,address,address,address,uint256,uint256)"
+    ),
+  ];
+
+  await accessManager.setTargetFunctionRole(
+    intermediary.target,
+    custodian_intermediary_selectors,
+    CUSTODIAN_ID
+  );
+
+  await accessManager.setTargetFunctionRole(
+    intermediary.target,
+    facilitator_intermediary_selectors,
+    FACILITATOR_ID
+  );
+
+  await accessManager.grantRolesDelay(CUSTODIAN_ID, custodian, 0);
+  await accessManager.grantRolesDelay(FACILITATOR_ID, facilitator, 0);
+}
+
+module.exports = {
+  setUpAccessManagerToken,
+  setUpAccessManagerIntermediary,
+};
