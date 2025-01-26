@@ -24,7 +24,7 @@ async function setUpAccessManagerToken(
   const custodian_selectors = [
     // add delay in real use
     getSelector("mint(address,uint256)"),
-    getSelector("_authorizeUpgrade(address)"),
+    getSelector("upgradeToAndCall(address,bytes)"),
     getSelector("updateAllowList(address)"),
     getSelector("setFeePercentage(uint256)"),
     getSelector("changeStablecoin(address)"),
@@ -35,7 +35,7 @@ async function setUpAccessManagerToken(
   ];
 
   const custodian_allowlist_selectors = [
-    getSelector("_authorizeUpgrade(address)"),
+    getSelector("upgradeToAndCall(address,bytes)"),
     getSelector("allowUser(address)"),
     getSelector("disallowUser(address)"),
   ];
@@ -43,7 +43,7 @@ async function setUpAccessManagerToken(
   const facilitator_selectors = [
     getSelector("transferFrom(address,address,uint256)"),
     getSelector("transfer(address,uint256)"),
-    getSelector("distributeRentalPayments"),
+    getSelector("distributeRentalPayments()"),
     getSelector("adminClaimRent(address,bool,bool,uint256)"),
     getSelector("adminTransferFrom(address,address,uint256)"),
     getSelector("burnFrom(address,uint256)"),
@@ -94,7 +94,7 @@ async function setUpAccessManagerIntermediary( // only call after setting up tok
   facilitator
 ) {
   const custodian_intermediary_selectors = [
-    getSelector("_authorizeUpgrade(address)"),
+    getSelector("upgradeToAndCall(address,bytes)"),
   ];
 
   const facilitator_intermediary_selectors = [
@@ -119,7 +119,17 @@ async function setUpAccessManagerIntermediary( // only call after setting up tok
   await accessManager.grantRolesDelay(FACILITATOR_ID, facilitator, 0);
 }
 
+async function allowUsers(custodian, allowlist, investors) {
+  for (const investor of investors) {
+    await allowlist.connect(custodian).allowUser(investor.address);
+  }
+}
+
 module.exports = {
+  CUSTODIAN_ID,
+  FACILITATOR_ID,
+  STATE_CHANGER_ID,
   setUpAccessManagerToken,
   setUpAccessManagerIntermediary,
+  allowUsers,
 };

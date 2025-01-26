@@ -12,7 +12,7 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
  * It provides functionalities to add, remove, and check allowed addresses.
  * Access control and upgradeability are implemented using OpenZeppelin libraries.
  */
-contract RemoraAllowlist is
+contract RemoraAllowlistV2 is
     Initializable,
     AccessManagedUpgradeable,
     UUPSUpgradeable
@@ -59,6 +59,11 @@ contract RemoraAllowlist is
         __UUPSUpgradeable_init();
         _allowed[tokenOwner] = true;
         emit UserAllowed(tokenOwner);
+    }
+
+    //added to test upgrading
+    function version() external pure returns (uint256) {
+        return 2;
     }
 
     /**
@@ -113,18 +118,6 @@ contract RemoraAllowlist is
      */
     function allowed(address account) public view returns (bool) {
         return _allowed[account];
-    }
-
-    /**
-     * @notice Used to upgrade smart contract. Restricted to authorized accounts.
-     * @param newImplementation The address of the new implementation to be upgraded to.
-     * @param data The data used for initializing the new contract.
-     */
-    function upgradeToAndCall(
-        address newImplementation,
-        bytes memory data
-    ) public payable override restricted {
-        super.upgradeToAndCall(newImplementation, data);
     }
 
     /**

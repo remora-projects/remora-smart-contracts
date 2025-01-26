@@ -104,11 +104,21 @@ contract RemoraSaleIntermediary is
     }
 
     /**
+     * @notice Used to upgrade smart contract. Restricted to authorized accounts.
+     * @param newImplementation The address of the new implementation to be upgraded to.
+     * @param data The data used for initializing the new contract.
+     */
+    function upgradeToAndCall(
+        address newImplementation,
+        bytes memory data
+    ) public payable override restricted {
+        super.upgradeToAndCall(newImplementation, data);
+    }
+
+    /**
      * @notice Authorizes upgrades for the contract.
      * @dev Override required by solidity.
      * @param newImplementation The address of the new implementation.
      */
-    function _authorizeUpgrade(
-        address newImplementation
-    ) internal override restricted {}
+    function _authorizeUpgrade(address newImplementation) internal override {}
 }

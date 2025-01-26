@@ -1,6 +1,37 @@
 const { ethers, upgrades } = require("hardhat");
 const { setUpAccessManagerToken } = require("./AccessManagerSetUp");
 
+async function deployContractsAndSetVariables() {
+  const [
+    owner,
+    investor1,
+    investor2,
+    investor3,
+    investor4,
+    custodian,
+    facilitator,
+    state_changer,
+  ] = await ethers.getSigners();
+
+  const { remoratoken, allowlist, ausd, accessmanager } =
+    await setUpAndDeployContracts(owner, custodian, facilitator, state_changer);
+
+  return {
+    owner,
+    investor1,
+    investor2,
+    investor3,
+    investor4,
+    custodian,
+    facilitator,
+    state_changer,
+    remoratoken,
+    allowlist,
+    ausd,
+    accessmanager,
+  };
+}
+
 async function setUpAndDeployContracts(
   owner,
   custodian,
@@ -44,7 +75,7 @@ async function setUpAndDeployContracts(
       accessmanager.target,
       "Echo Apartments",
       "ECHO",
-      1000, //token supply
+      10, //token supply
       allowlist.target,
       ausd.target,
       owner.address,
@@ -70,5 +101,5 @@ async function setUpAndDeployContracts(
 }
 
 module.exports = {
-  setUpAndDeployContracts,
+  deployContractsAndSetVariables,
 };

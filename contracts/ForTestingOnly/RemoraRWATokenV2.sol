@@ -2,8 +2,8 @@
 // Compatible with OpenZeppelin Contracts ^5.0.0
 pragma solidity ^0.8.22;
 
-import {RemoraRWABurnable} from "./RemoraRWABurnable.sol";
-import {RemoraRWAHolderManagement} from "./RemoraRWAHolderManagement.sol";
+import {RemoraRWABurnable} from "../RWAToken/RemoraRWABurnable.sol";
+import {RemoraRWAHolderManagement} from "../RWAToken/RemoraRWAHolderManagement.sol";
 import {ERC20PermitUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PermitUpgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
@@ -15,12 +15,10 @@ interface Allowlist {
 
 /// @custom:security-contact support@remora.us
 /**
- * @title RemoraRWAToken
- * @notice This contract represents a Real-World Asset (RWA) token, allowing tokenized representation of physical assets.
- * It incorporates features for managing transfers, minting, burning, allowlist checks, payouts, allowance permitting, and pausing.
- * The token operates with OpenZeppelin upgradeable contracts and custom modules for RWA-specific operations.
+ * @title RemoraRWATokenV2
+ * @notice This contract is used for testing the upgrade capabilities of the RemoraRWAToken.
  */
-contract RemoraRWAToken is
+contract RemoraRWATokenV2 is
     Initializable,
     ERC20PermitUpgradeable,
     PausableUpgradeable,
@@ -74,6 +72,27 @@ contract RemoraRWAToken is
         _allowlist = Allowlist(allowList);
 
         _mint(tokenOwner, _initialSupply * 10 ** decimals());
+    }
+
+    // added to test upgrading
+    function version() external pure returns (uint256) {
+        return 2;
+    }
+
+    /**
+     * @notice Transfers tokens to a recipient if allowed. Restricted to authorized accounts.
+     * Changed to test upgrade capability, removed restrictions.
+     * @dev Calls OpenZeppelin ERC20Upgradeable transfer function
+     * @param to The recipient address.
+     * @param value The number of tokens to transfer.
+     * @return A boolean indicating whether the transfer succeeded.
+     */
+    function transfer(
+        address to,
+        uint256 value
+    ) public override whenNotPaused nonReentrant returns (bool) {
+        _exchangeAllowed(_msgSender(), to);
+        return super.transfer(to, value);
     }
 
     /**
@@ -163,22 +182,6 @@ contract RemoraRWAToken is
     }
 
     /**
-     * @notice Transfers tokens to a recipient if allowed. Restricted to authorized accounts.
-     * @dev Calls OpenZeppelin ERC20Upgradeable transfer function
-     * @param to The recipient address.
-     * @param value The number of tokens to transfer.
-     * @return A boolean indicating whether the transfer succeeded.
-     */
-    function transfer(
-        // TODO: maybe rework this?
-        address to,
-        uint256 value
-    ) public override whenNotPaused nonReentrant restricted returns (bool) {
-        _exchangeAllowed(_msgSender(), to);
-        return super.transfer(to, value);
-    }
-
-    /**
      * @notice Transfers tokens from one address to another using an allowance. Restricted to authorized accounts.
      * @dev Calls OpenZeppelin ERC20Upgradeable transferFrom function.
      * @param from The address from which tokens are being transferred.
@@ -234,22 +237,12 @@ contract RemoraRWAToken is
     }
 
     /**
-     * @notice Used to upgrade smart contract. Restricted to authorized accounts.
-     * @param newImplementation The address of the new implementation to be upgraded to.
-     * @param data The data used for initializing the new contract.
-     */
-    function upgradeToAndCall(
-        address newImplementation,
-        bytes memory data
-    ) public payable override restricted {
-        super.upgradeToAndCall(newImplementation, data);
-    }
-
-    /**
-     * @notice Authorizes an upgrade to a new contract implementation.
+     * @notice Authorizes an upgrade to a new contract implementation. Restricted to authorized accounts.
      * @param newImplementation The address of the new contract implementation.
      */
-    function _authorizeUpgrade(address newImplementation) internal override {}
+    function _authorizeUpgrade(
+        address newImplementation
+    ) internal override restricted {}
 
     /**
      * @notice Updates internal state during token transfers, including holder management.
