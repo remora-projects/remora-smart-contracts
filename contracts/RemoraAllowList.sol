@@ -14,8 +14,8 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
  */
 contract RemoraAllowlist is
     Initializable,
-    AccessManagedUpgradeable,
-    UUPSUpgradeable
+    UUPSUpgradeable,
+    AccessManagedUpgradeable
 {
     /**
      * @dev Mapping that tracks the allowed status of addresses.
@@ -76,34 +76,36 @@ contract RemoraAllowlist is
      * @notice Adds a user to the allowlist, permitting them to interact with Remora RWA tokens.
      * This function is restricted to authorized accounts via AccessManaged.
      * @param user The address to allow.
-     * @return A boolean indicating whether the user was already allowed (`true`) or not (`false`).
+     * @return isAllowed A boolean indicating whether the user was already allowed (`true`) or not (`false`).
      *
      * Emits a {UserAllowed} event if the user is newly allowed.
      */
-    function allowUser(address user) external restricted returns (bool) {
-        bool isAllowed = allowed(user);
+    function allowUser(
+        address user
+    ) external restricted returns (bool isAllowed) {
+        isAllowed = allowed(user);
         if (!isAllowed) {
             _allowed[user] = true;
             emit UserAllowed(user);
         }
-        return isAllowed;
     }
 
     /**
      * @notice Removes a user from the allowlist, preventing them from interacting with Remora RWA tokens.
      * This function is restricted to authorized accounts via AccessManaged.
      * @param user The address to disallow.
-     * @return A boolean indicating whether the user was already disallowed (`false`) or not (`true`).
+     * @return isAllowed A boolean indicating whether the user was already disallowed (`false`) or not (`true`).
      *
      * Emits a {UserDisallowed} event if the user is newly disallowed.
      */
-    function disallowUser(address user) external restricted returns (bool) {
-        bool isAllowed = allowed(user);
+    function disallowUser(
+        address user
+    ) external restricted returns (bool isAllowed) {
+        isAllowed = allowed(user);
         if (isAllowed) {
             _allowed[user] = false;
             emit UserDisallowed(user);
         }
-        return isAllowed;
     }
 
     /**
@@ -116,24 +118,9 @@ contract RemoraAllowlist is
     }
 
     /**
-     * @notice Used to upgrade smart contract. Restricted to authorized accounts.
-     * @param newImplementation The address of the new implementation to be upgraded to.
-     * @param data The data used for initializing the new contract.
-     */
-    function upgradeToAndCall(
-        address newImplementation,
-        bytes memory data
-    ) public payable override restricted {
-        super.upgradeToAndCall(newImplementation, data);
-    }
-
-    /**
      * @notice Authorizes the upgrade of the contract to a new implementation.
      * This function is restricted to authorized accounts via AccessManaged.
      * @param newImplementation The address of the new contract implementation.
-     *
-     * Requirements:
-     * - Can only be called by an authorized account.
      */
     function _authorizeUpgrade(
         address newImplementation

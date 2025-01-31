@@ -12,7 +12,7 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
  * @title RemoraManager
  * @notice Created to add restricted upgradeable functionality to access manager.
  */
-contract RemoraManager is
+contract RemoraManagerV2 is
     Initializable,
     UUPSUpgradeable,
     AccessManagerUpgradeable
@@ -20,6 +20,10 @@ contract RemoraManager is
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
+    }
+
+    function version() external pure returns (uint256) {
+        return 2;
     }
 
     /**
@@ -32,14 +36,12 @@ contract RemoraManager is
     }
 
     /**
-     * @dev override required by solidity
-     * Either multi-sig admin calls this function, or upgrader with delay
+     * @dev override required by solidity, need to create upgrader role to call this function
      * @param newImplementation Address of the new implementation to be upgraded to.
      */
     function _authorizeUpgrade(
         address newImplementation
     ) internal view override {
-        (bool result, ) = hasRole(ADMIN_ROLE, _msgSender());
-        require(result || address(this) == msg.sender, "Unauthorized upgrade");
+        require(address(this) == msg.sender);
     }
 }

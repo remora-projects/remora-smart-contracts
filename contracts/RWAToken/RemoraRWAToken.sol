@@ -9,7 +9,7 @@ import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Pau
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-interface Allowlist {
+interface IAllowlist {
     function exchangeAllowed(address, address) external view;
 }
 
@@ -22,14 +22,22 @@ interface Allowlist {
  */
 contract RemoraRWAToken is
     Initializable,
+    UUPSUpgradeable,
     ERC20PermitUpgradeable,
     PausableUpgradeable,
     RemoraRWABurnable,
-    RemoraRWAHolderManagement,
-    UUPSUpgradeable
+    RemoraRWAHolderManagement
 {
     /// @dev Reference to the external allowlist contract for managing user permissions.
-    Allowlist private _allowlist;
+    IAllowlist private _allowlist;
+    /// @dev The flat fee for token transfers,
+    uint256 transferFee;
+
+    /**
+     * @notice Event emitted when flat fee has changed.
+     * @param newFee Value of the new fee.
+     */
+    event TransferFeeChanged(uint256 newFee);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -40,24 +48,26 @@ contract RemoraRWAToken is
      * @notice Initializes the RWA token contract with specified parameters.
      * @param tokenOwner The initial owner of the tokens, must be on allowList.
      * @param initialAuthority The address granted initial access management authority.
-     * @param _name The name of the token.
-     * @param _symbol The symbol of the token.
-     * @param _initialSupply The initial supply of tokens, in whole units.
      * @param allowList The address of the allowlist contract.
      * @param stablecoin The address of the stablecoin used for payouts.
      * @param wallet The address of the wallet to withdraw contract funds.
-     * @param feePercentage The fee percentage for payouts.
+     * @param initialPayoutFee The flat fee for payouts.
+     * @param initialTransferFee The flat fee for token transfers.
+     * @param _name The name of the token.
+     * @param _symbol The symbol of the token.
+     * @param _initialSupply The initial supply of tokens, in whole units.
      */
     function initialize(
         address tokenOwner,
         address initialAuthority,
-        string memory _name,
-        string memory _symbol,
-        uint256 _initialSupply,
         address allowList,
         address stablecoin,
         address wallet,
-        uint256 feePercentage
+        uint256 initialPayoutFee,
+        uint256 initialTransferFee,
+        string memory _name,
+        string memory _symbol,
+        uint256 _initialSupply
     ) public initializer {
         __ERC20_init(_name, _symbol);
         __ERC20Permit_init(_name);
@@ -67,21 +77,32 @@ contract RemoraRWAToken is
             initialAuthority,
             stablecoin,
             wallet,
-            feePercentage
+            initialPayoutFee
         );
         __UUPSUpgradeable_init();
 
-        _allowlist = Allowlist(allowList);
+        _allowlist = IAllowlist(allowList);
+        transferFee = initialTransferFee;
 
         _mint(tokenOwner, _initialSupply * 10 ** decimals());
     }
 
     /**
-     * @notice Allows token holders to claim rent when conditions allow.
-     * @dev Enforces stablecoin payout with fee set in holder management.
+     * @notice Sets new transfer fee.
+     * @param newFee New transfer fee value, in USD, 6 decimals.
      */
-    function claimRent() external whenNotPaused nonReentrant {
-        _claimRent(_msgSender(), true, false, 0);
+    function setTransferFee(uint256 newFee) external restricted {
+        require(newFee >= 0);
+        transferFee = newFee;
+        emit TransferFeeChanged(newFee);
+    }
+
+    /**
+     * @notice Allows token holders to claim payout when conditions allow.
+     * @dev Enforces stablecoin payout with flat fee set in holder management.
+     */
+    function claimPayout() external whenNotPaused nonReentrant {
+        _claimPayout(_msgSender(), true, false, 0);
     }
 
     /**
@@ -91,17 +112,17 @@ contract RemoraRWAToken is
      * @param useCustomFee Value indicating whether or not to use a custom fee.
      * @param feeValue The custom fee to use if useCustomFee is true.
      */
-    function adminClaimRent(
+    function adminClaimPayout(
         address investor,
         bool useStablecoin,
         bool useCustomFee,
         uint256 feeValue
     ) external restricted nonReentrant {
-        _claimRent(investor, useStablecoin, useCustomFee, feeValue);
+        _claimPayout(investor, useStablecoin, useCustomFee, feeValue);
     }
 
     /**
-     * @notice Allows restricted accounts to transfer tokens without pausing, freezing, or allowlist restrictions.
+     * @notice Allows restricted accounts to transfer tokens without fee, pausing, freezing, or allowlist restrictions.
      * @dev Calls OpenZeppelin ERC20Upgradeable transferFrom function.
      * @param from The address from which tokens are being transferred.
      * @param to The recipient address.
@@ -122,7 +143,7 @@ contract RemoraRWAToken is
      */
     function updateAllowList(address newImplementation) external restricted {
         require(newImplementation != address(0));
-        _allowlist = Allowlist(newImplementation);
+        _allowlist = IAllowlist(newImplementation);
     }
 
     /**
@@ -163,36 +184,45 @@ contract RemoraRWAToken is
     }
 
     /**
-     * @notice Transfers tokens to a recipient if allowed. Restricted to authorized accounts.
+     * @notice Transfers tokens to a recipient if allowed, with flat fee.
      * @dev Calls OpenZeppelin ERC20Upgradeable transfer function
      * @param to The recipient address.
      * @param value The number of tokens to transfer.
-     * @return A boolean indicating whether the transfer succeeded.
+     * @return result A boolean indicating whether the transfer succeeded or not.
      */
     function transfer(
-        // TODO: maybe rework this?
         address to,
         uint256 value
-    ) public override whenNotPaused nonReentrant restricted returns (bool) {
-        _exchangeAllowed(_msgSender(), to);
-        return super.transfer(to, value);
+    ) public override whenNotPaused nonReentrant returns (bool result) {
+        address sender = _msgSender();
+        _exchangeAllowed(sender, to);
+        result = super.transfer(to, value);
+        if (transferFee != 0) {
+            HolderManagementStorage storage $ = _getHolderManagementStorage();
+            $._stablecoin.transferFrom(sender, $._wallet, transferFee);
+        }
     }
 
     /**
-     * @notice Transfers tokens from one address to another using an allowance. Restricted to authorized accounts.
+     * @notice Transfers tokens from one address to another using an allowance. Sender pays fee.
      * @dev Calls OpenZeppelin ERC20Upgradeable transferFrom function.
      * @param from The address from which tokens are being transferred.
      * @param to The recipient address.
      * @param value The number of tokens to transfer.
-     * @return A boolean indicating whether the transfer succeeded.
+     * @return result A boolean indicating whether the transfer succeeded or not.
      */
     function transferFrom(
         address from,
         address to,
         uint256 value
-    ) public override whenNotPaused nonReentrant restricted returns (bool) {
+    ) public override whenNotPaused nonReentrant returns (bool result) {
+        address sender = _msgSender();
         _exchangeAllowed(from, to);
-        return super.transferFrom(from, to, value);
+        result = super.transferFrom(from, to, value);
+        if (transferFee != 0) {
+            HolderManagementStorage storage $ = _getHolderManagementStorage();
+            $._stablecoin.transferFrom(sender, $._wallet, transferFee);
+        }
     }
 
     /**
@@ -223,33 +253,13 @@ contract RemoraRWAToken is
     }
 
     /**
-     * @notice Verifies if a token exchange between two addresses is allowed.
-     * @param from The sender address.
-     * @param to The recipient address.
-     */
-    function _exchangeAllowed(address from, address to) internal view {
-        _allowlist.exchangeAllowed(from, to);
-        if (isHolderFrozen(from)) revert UserIsFrozen();
-        if (isHolderFrozen(to)) revert UserIsFrozen();
-    }
-
-    /**
-     * @notice Used to upgrade smart contract. Restricted to authorized accounts.
-     * @param newImplementation The address of the new implementation to be upgraded to.
-     * @param data The data used for initializing the new contract.
-     */
-    function upgradeToAndCall(
-        address newImplementation,
-        bytes memory data
-    ) public payable override restricted {
-        super.upgradeToAndCall(newImplementation, data);
-    }
-
-    /**
      * @notice Authorizes an upgrade to a new contract implementation.
+     * Restricted to authorized accounts only.
      * @param newImplementation The address of the new contract implementation.
      */
-    function _authorizeUpgrade(address newImplementation) internal override {}
+    function _authorizeUpgrade(
+        address newImplementation
+    ) internal override restricted {}
 
     /**
      * @notice Updates internal state during token transfers, including holder management.
@@ -264,5 +274,16 @@ contract RemoraRWAToken is
     ) internal override {
         super._update(from, to, value);
         _updateHolders(from, to);
+    }
+
+    /**
+     * @notice Verifies if a token exchange between two addresses is allowed.
+     * @param from The sender address.
+     * @param to The recipient address.
+     */
+    function _exchangeAllowed(address from, address to) private view {
+        _allowlist.exchangeAllowed(from, to);
+        if (isHolderFrozen(from)) revert UserIsFrozen();
+        if (isHolderFrozen(to)) revert UserIsFrozen();
     }
 }

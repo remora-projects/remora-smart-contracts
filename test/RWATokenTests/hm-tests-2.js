@@ -1,19 +1,28 @@
 const {
   loadFixture,
 } = require("@nomicfoundation/hardhat-toolbox/network-helpers");
-const { deployContractsAndSetVariables } = require("../helpers/SetUpContracts");
+const {
+  deployContractsAndSetVariables,
+} = require("../helpers/setup-contracts");
 const {
   CUSTODIAN_ID,
   FACILITATOR_ID,
-} = require("../helpers/AccessManagerSetUp");
-const { checkRents, payAndCalculate } = require("../helpers/HolderManagement");
+} = require("../helpers/access-manager-setup");
+const {
+  payAndCalculate,
+  checkPayouts,
+} = require("../helpers/holder-management-helper");
 const { expect } = require("chai");
 
 describe("RemoraRWAToken Holder Management Tests 2", function () {
+  async function holderManagementTestsSetUp() {
+    return await deployContractsAndSetVariables(10, 0, 10000); //10% fee
+  }
+
   describe("Holder Management Tests, claims + fee", function () {
     it("Should distribute payouts correctly with Fee, plus withdraw to wallet", async function () {
       const { owner, investor1, remoratoken, accessmanager, allowlist, ausd } =
-        await loadFixture(deployContractsAndSetVariables);
+        await loadFixture(holderManagementTestsSetUp);
 
       const investors = [owner, investor1];
       const amounts = [BigInt(0), BigInt(0)];
@@ -28,36 +37,37 @@ describe("RemoraRWAToken Holder Management Tests 2", function () {
 
       await remoratoken.transfer(investor1.address, 1);
 
-      // Call distributeRentalPayments ($1000)
+      // Call distributePayout ($1000)
       await payAndCalculate(
         remoratoken,
+        owner,
         investors,
         amounts,
         1000000000,
         totalSupply
       );
-      await checkRents(remoratoken, investors, amounts);
+      await checkPayouts(remoratoken, investors, amounts);
 
-      //investor claims rent with fee
+      //investor claims payout with fee
       expect(
-        await remoratoken.connect(investor1).claimRent()
+        await remoratoken.connect(investor1).claimPayout()
       ).to.changeTokenBalances(
         ausd,
         [remoratoken, investor1],
         [-90000000, +90000000]
       ); // +- $90
       expect(
-        (await remoratoken.rentBalance.staticCallResult(investor1.address)).at(
-          0
-        )
+        (
+          await remoratoken.payoutBalance.staticCallResult(investor1.address)
+        ).at(0)
       ).to.equal(0);
 
       //owner claims rent, no fee
-      await remoratoken.claimRent();
+      await remoratoken.claimPayout();
       expect(
-        (await remoratoken.rentBalance.staticCallResult(owner.address)).at(0)
+        (await remoratoken.payoutBalance.staticCallResult(owner.address)).at(0)
       ).to.equal(0);
-      await remoratoken.rentBalance(owner.address);
+      await remoratoken.payoutBalance(owner.address);
 
       //withdraw stablecoin from contract
       expect(await remoratoken.withdraw(true, 0)).to.changeTokenBalances(
@@ -69,7 +79,7 @@ describe("RemoraRWAToken Holder Management Tests 2", function () {
 
     it("Should distribute payouts correctly with fee, then with fee change", async function () {
       const { owner, investor1, remoratoken, allowlist, accessmanager, ausd } =
-        await loadFixture(deployContractsAndSetVariables);
+        await loadFixture(holderManagementTestsSetUp);
 
       const investors = [owner, investor1];
       const amounts = [BigInt(0), BigInt(0)];
@@ -84,42 +94,44 @@ describe("RemoraRWAToken Holder Management Tests 2", function () {
 
       await remoratoken.transfer(investor1.address, 1);
 
-      // Call distributeRentalPayments ($1000)
+      // Call distributePayout ($1000)
       await payAndCalculate(
         remoratoken,
+        owner,
         investors,
         amounts,
         1000000000,
         totalSupply
       );
 
-      await checkRents(remoratoken, investors, amounts);
+      await checkPayouts(remoratoken, investors, amounts);
 
       //investor claims rent with fee
       expect(
-        await remoratoken.connect(investor1).claimRent()
+        await remoratoken.connect(investor1).claimPayout()
       ).to.changeTokenBalances(
         ausd,
         [remoratoken, investor1],
         [-90000000, +90000000]
       ); // +- $90
 
-      await remoratoken.setFeePercentage(20000); //20% fee
+      await remoratoken.setPayoutFee(20000); //20% fee
 
-      // Call distributeRentalPayments ($1000)
+      // Call distributePayout ($1000)
       await payAndCalculate(
         remoratoken,
+        owner,
         investors,
         amounts,
         1000000000,
         totalSupply
       );
 
-      await checkRents(remoratoken, investors, amounts);
+      await checkPayouts(remoratoken, investors, amounts);
 
       //investor claims rent with new fee
       expect(
-        await remoratoken.connect(investor1).claimRent()
+        await remoratoken.connect(investor1).claimPayout()
       ).to.changeTokenBalances(
         ausd,
         [remoratoken, investor1],
@@ -127,11 +139,11 @@ describe("RemoraRWAToken Holder Management Tests 2", function () {
       ); // +- $80
 
       //owner claims rent, no fee
-      await remoratoken.claimRent();
+      await remoratoken.claimPayout();
       expect(
-        (await remoratoken.rentBalance.staticCallResult(owner.address)).at(0)
+        (await remoratoken.payoutBalance.staticCallResult(owner.address)).at(0)
       ).to.equal(0);
-      await remoratoken.rentBalance(owner.address);
+      await remoratoken.payoutBalance(owner.address);
 
       //withdraw stablecoin from contract
       expect(await remoratoken.withdraw(true, 0)).to.changeTokenBalances(
@@ -143,7 +155,7 @@ describe("RemoraRWAToken Holder Management Tests 2", function () {
 
     it("Should freeze holder from init but allow claim of all funds after unfrozen (with fee)", async function () {
       const { owner, investor1, remoratoken, accessmanager, allowlist, ausd } =
-        await loadFixture(deployContractsAndSetVariables);
+        await loadFixture(holderManagementTestsSetUp);
 
       await accessmanager.grantRole(FACILITATOR_ID, owner, 0);
       await accessmanager.grantRole(CUSTODIAN_ID, owner, 0);
@@ -160,31 +172,31 @@ describe("RemoraRWAToken Holder Management Tests 2", function () {
         true
       );
 
-      // Call distributeRentalPayments ($1000)
-      await remoratoken.distributeRentalPayments(1000000000);
-      await remoratoken.distributeRentalPayments(1000000000);
-      await remoratoken.distributeRentalPayments(1000000000);
-      await remoratoken.distributeRentalPayments(1000000000);
+      // Call distributePayout ($1000)
+      await remoratoken.distributePayout(1000000000);
+      await remoratoken.distributePayout(1000000000);
+      await remoratoken.distributePayout(1000000000);
+      await remoratoken.distributePayout(1000000000);
 
       //rent payout balance
       expect(
-        (await remoratoken.rentBalance.staticCallResult(investor1.address)).at(
-          0
-        )
+        (
+          await remoratoken.payoutBalance.staticCallResult(investor1.address)
+        ).at(0)
       ).to.equal(0); //$0
-      await remoratoken.rentBalance(investor1.address);
+      await remoratoken.payoutBalance(investor1.address);
 
       await remoratoken.unFreezeHolder(investor1.address);
 
       expect(
-        (await remoratoken.rentBalance.staticCallResult(investor1.address)).at(
-          0
-        )
+        (
+          await remoratoken.payoutBalance.staticCallResult(investor1.address)
+        ).at(0)
       ).to.equal(400000000); //$400
-      await remoratoken.rentBalance(owner.address);
+      await remoratoken.payoutBalance(owner.address);
 
       expect(
-        await remoratoken.connect(investor1).claimRent()
+        await remoratoken.connect(investor1).claimPayout()
       ).to.changeTokenBalances(
         ausd,
         [remoratoken, investor1],
@@ -192,15 +204,15 @@ describe("RemoraRWAToken Holder Management Tests 2", function () {
       ); // $360 claimed with fee
 
       expect(
-        (await remoratoken.rentBalance.staticCallResult(investor1.address)).at(
-          0
-        )
+        (
+          await remoratoken.payoutBalance.staticCallResult(investor1.address)
+        ).at(0)
       ).to.equal(0); //$0
     });
 
     it("Should only allow unfrozen balance claim when user is frozen, but allow claim of all funds after unfrozen", async function () {
       const { owner, investor1, remoratoken, accessmanager, allowlist, ausd } =
-        await loadFixture(deployContractsAndSetVariables);
+        await loadFixture(holderManagementTestsSetUp);
 
       const investors = [owner, investor1];
       const amounts = [BigInt(0), BigInt(0)];
@@ -215,9 +227,10 @@ describe("RemoraRWAToken Holder Management Tests 2", function () {
 
       await remoratoken.transfer(investor1.address, 1);
 
-      // Call distributeRentalPayments ($1000)
+      // Call distributePayout ($1000)
       await payAndCalculate(
         remoratoken,
+        owner,
         investors,
         amounts,
         1000000000,
@@ -230,9 +243,10 @@ describe("RemoraRWAToken Holder Management Tests 2", function () {
         true
       );
 
-      // Call distributeRentalPayments ($1000)
+      // Call distributePayout ($1000)
       await payAndCalculate(
         remoratoken,
+        owner,
         investors,
         amounts,
         1000000000,
@@ -240,10 +254,10 @@ describe("RemoraRWAToken Holder Management Tests 2", function () {
       );
 
       //rent payout balance
-      await checkRents(remoratoken, investors, amounts);
+      await checkPayouts(remoratoken, investors, amounts);
 
       expect(
-        await remoratoken.connect(investor1).claimRent()
+        await remoratoken.connect(investor1).claimPayout()
       ).to.changeTokenBalances(
         ausd,
         [remoratoken, investor1],
@@ -251,15 +265,15 @@ describe("RemoraRWAToken Holder Management Tests 2", function () {
       ); // $90 claimed with fee
       amounts[1] = BigInt(0);
 
-      await checkRents(remoratoken, investors, amounts);
+      await checkPayouts(remoratoken, investors, amounts);
 
       await remoratoken.unFreezeHolder(investor1.address);
 
       //frozen funds should be unfrozen and claimable
-      await checkRents(remoratoken, investors, amounts);
+      await checkPayouts(remoratoken, investors, amounts);
 
       expect(
-        await remoratoken.connect(investor1).claimRent()
+        await remoratoken.connect(investor1).claimPayout()
       ).to.changeTokenBalances(
         ausd,
         [remoratoken, investor1],
@@ -267,9 +281,9 @@ describe("RemoraRWAToken Holder Management Tests 2", function () {
       ); // $90 claimed with fee
     });
 
-    it("Should revert with Insufficient stablecoin balance when investor claims rent because smart contract has no balance", async function () {
+    it("Should revert with Insufficient stablecoin balance when investor claims payout because contract has no balance", async function () {
       const { owner, investor1, remoratoken, accessmanager, allowlist, ausd } =
-        await loadFixture(deployContractsAndSetVariables);
+        await loadFixture(holderManagementTestsSetUp);
 
       const investors = [owner, investor1];
       const amounts = [BigInt(0), BigInt(0)];
@@ -285,20 +299,21 @@ describe("RemoraRWAToken Holder Management Tests 2", function () {
       // transfer 1 token to investor
       await remoratoken.transfer(investor1.address, 1);
 
-      // Call distributeRentalPayments ($1000)
+      // Call distributePayout ($1000)
       await payAndCalculate(
         remoratoken,
+        owner,
         investors,
         amounts,
         1000000000,
         totalSupply
       );
 
-      await checkRents(remoratoken, investors, amounts);
+      await checkPayouts(remoratoken, investors, amounts);
 
       //investor claims rent with fee
       expect(
-        await remoratoken.connect(investor1).claimRent()
+        await remoratoken.connect(investor1).claimPayout()
       ).to.be.revertedWithCustomError(
         remoratoken,
         "InsufficentStablecoinBalance"
@@ -306,23 +321,29 @@ describe("RemoraRWAToken Holder Management Tests 2", function () {
     });
 
     it("Should revert payout distribution and claim by unauthorized accounts, plus empty claim by authorized user", async function () {
-      const { custodian, investor1, investor2, allowlist, remoratoken } =
-        await loadFixture(deployContractsAndSetVariables);
+      const {
+        custodian,
+        investor1,
+        investor2,
+        facilitator,
+        allowlist,
+        remoratoken,
+      } = await loadFixture(holderManagementTestsSetUp);
 
       await expect(
-        remoratoken.connect(investor2).distributeRentalPayments(1000)
+        remoratoken.connect(investor2).distributePayout(1000)
       ).to.be.revertedWithCustomError(remoratoken, "AccessManagedUnauthorized");
 
-      await remoratoken.distributeRentalPayments(1000);
+      await remoratoken.connect(facilitator).distributePayout(1000);
       await allowlist.connect(custodian).allowUser(investor1.address);
 
       await expect(
-        remoratoken.connect(investor2).claimRent()
-      ).to.be.revertedWithCustomError(remoratoken, "NoRentToClaim");
+        remoratoken.connect(investor2).claimPayout()
+      ).to.be.revertedWithCustomError(remoratoken, "NoPayoutToClaim");
 
       await expect(
-        remoratoken.connect(investor1).claimRent()
-      ).to.be.revertedWithCustomError(remoratoken, "NoRentToClaim");
+        remoratoken.connect(investor1).claimPayout()
+      ).to.be.revertedWithCustomError(remoratoken, "NoPayoutToClaim");
     });
   });
 });

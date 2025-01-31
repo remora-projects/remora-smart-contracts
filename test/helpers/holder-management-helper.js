@@ -1,20 +1,21 @@
 const { expect } = require("chai");
 
-async function calculateRent(rwaToken, investor, amount, totalSupply) {
+async function calculatePayout(rwaToken, investor, amount, totalSupply) {
   const tokenBalance = await rwaToken.balanceOf(investor.address);
   return BigInt((BigInt(tokenBalance) * BigInt(amount)) / BigInt(totalSupply));
 }
 
 async function payAndCalculate(
   rwaToken,
+  facilitator,
   investors,
   amounts,
   amount,
   totalSupply
 ) {
-  await rwaToken.distributeRentalPayments(amount);
+  await rwaToken.connect(facilitator).distributePayout(amount);
   for (let i = 0; i < investors.length; ++i) {
-    amounts[i] += await calculateRent(
+    amounts[i] += await calculatePayout(
       rwaToken,
       investors[i],
       BigInt(amount),
@@ -23,17 +24,19 @@ async function payAndCalculate(
   }
 }
 
-async function checkRents(rwaToken, investors, amounts) {
-  //checks + updates rents
+async function checkPayouts(rwaToken, investors, amounts) {
+  //checks + updates payouts
   for (let i = 0; i < investors.legnth; ++i) {
     expect(
-      (await rwaToken.rentBalance.staticCallResult(investors[i].address)).at(0)
+      (await rwaToken.payoutBalance.staticCallResult(investors[i].address)).at(
+        0
+      )
     ).to.equal(amounts[i]);
-    await rwaToken.rentBalance(investors[i].address);
+    await rwaToken.payoutBalance(investors[i].address);
   }
 }
 
 module.exports = {
-  checkRents,
+  checkPayouts,
   payAndCalculate,
 };

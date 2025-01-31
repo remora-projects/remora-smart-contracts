@@ -3,6 +3,7 @@ const { ethers } = require("hardhat");
 const CUSTODIAN_ID = 1;
 const FACILITATOR_ID = 2;
 const STATE_CHANGER_ID = 3;
+const INTERMEDIARY_ID = 4;
 
 function getSelector(signature) {
   return ethers.id(signature).slice(0, 10);
@@ -26,7 +27,8 @@ async function setUpAccessManagerToken(
     getSelector("mint(address,uint256)"),
     getSelector("upgradeToAndCall(address,bytes)"),
     getSelector("updateAllowList(address)"),
-    getSelector("setFeePercentage(uint256)"),
+    getSelector("setPayoutFee(uint256)"),
+    getSelector("setTransferFee(uint256)"),
     getSelector("changeStablecoin(address)"),
     getSelector("changeWallet(address)"),
     getSelector("freezeHolder(address)"),
@@ -41,10 +43,8 @@ async function setUpAccessManagerToken(
   ];
 
   const facilitator_selectors = [
-    getSelector("transferFrom(address,address,uint256)"),
-    getSelector("transfer(address,uint256)"),
-    getSelector("distributeRentalPayments()"),
-    getSelector("adminClaimRent(address,bool,bool,uint256)"),
+    getSelector("distributePayout(uint256)"),
+    getSelector("adminClaimPayout(address,bool,bool,uint256)"),
     getSelector("adminTransferFrom(address,address,uint256)"),
     getSelector("burnFrom(address,uint256)"),
   ];
@@ -89,34 +89,48 @@ async function setUpAccessManagerToken(
 
 async function setUpAccessManagerIntermediary( // only call after setting up token
   accessManager,
-  intermediary,
+  remoratoken,
   custodian,
+  intermediary,
   facilitator
 ) {
-  const custodian_intermediary_selectors = [
-    getSelector("upgradeToAndCall(address,bytes)"),
+  const intermediary_selectors = [
+    getSelector("adminTransferFrom(address,address,uint256)"),
+    getSelector("adminClaimPayout(address,bool,bool,uint256)"),
   ];
 
-  const facilitator_intermediary_selectors = [
+  const custodian_selectors = [getSelector("setFeeRecipient(address)")];
+
+  const facilitator_selectors = [
     getSelector(
-      "facilitateSwap(address,address,address,address,uint256,uint256)"
+      "facilitateSwap(address,address,address,uint256,address,uint256)"
+    ),
+    getSelector(
+      "facilitateTransfer(address,address,address,uint256,address,uint256)"
     ),
   ];
 
   await accessManager.setTargetFunctionRole(
-    intermediary.target,
-    custodian_intermediary_selectors,
-    CUSTODIAN_ID
+    remoratoken.target,
+    intermediary_selectors,
+    INTERMEDIARY_ID
   );
 
   await accessManager.setTargetFunctionRole(
     intermediary.target,
-    facilitator_intermediary_selectors,
+    facilitator_selectors,
     FACILITATOR_ID
   );
 
-  await accessManager.grantRolesDelay(CUSTODIAN_ID, custodian, 0);
-  await accessManager.grantRolesDelay(FACILITATOR_ID, facilitator, 0);
+  await accessManager.setTargetFunctionRole(
+    intermediary.target,
+    custodian_selectors,
+    CUSTODIAN_ID
+  );
+
+  await accessManager.grantRole(CUSTODIAN_ID, custodian, 0);
+  await accessManager.grantRole(INTERMEDIARY_ID, intermediary.target, 0);
+  await accessManager.grantRole(FACILITATOR_ID, facilitator, 0);
 }
 
 async function allowUsers(custodian, allowlist, investors) {
@@ -129,6 +143,7 @@ module.exports = {
   CUSTODIAN_ID,
   FACILITATOR_ID,
   STATE_CHANGER_ID,
+  getSelector,
   setUpAccessManagerToken,
   setUpAccessManagerIntermediary,
   allowUsers,

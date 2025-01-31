@@ -2,123 +2,208 @@
 pragma solidity ^0.8.22;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
-import {AccessManagedUpgradeable} from "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
-import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {AccessManaged} from "@openzeppelin/contracts/access/manager/AccessManaged.sol";
+
+interface IRwaToken {
+    function adminClaimPayout(address, bool, bool, uint256) external;
+
+    function adminTransferFrom(
+        address,
+        address,
+        uint256
+    ) external returns (bool);
+}
 
 /**
  * @title RemoraSaleIntermediary
  * @notice A contract to act as a sale intermediary for exchanging stablecoins for RWA tokens or swapping payment tokens.
- * @dev Compatible with OpenZeppelin Upgradeable contracts.
  */
-contract RemoraSaleIntermediary is
-    Initializable,
-    ReentrancyGuardUpgradeable,
-    AccessManagedUpgradeable,
-    UUPSUpgradeable
-{
-    /**
-     * @notice Emitted on a successful swap of one token for another.
-     * @param initiator The address initiating the swap.
-     * @param swapFromAddress The address of the token being swapped from.
-     * @param fromAmount The amount of the token being swapped from.
-     * @param swapToAddress The address of the token being swapped to.
-     * @param toAmount The amount of the token being swapped to.
-     */
-    event SwapSuccess(
-        address initiator,
-        address counterparty,
-        address swapFromAddress,
-        uint256 fromAmount,
-        address swapToAddress,
-        uint256 toAmount
-    );
+contract RemoraSaleIntermediary is AccessManaged, ReentrancyGuard {
+    address private _feeRecipient;
+    address private _fundingWallet;
 
     /// @notice Error when an invalid address is sent.
     error InvalidAddress();
 
-    /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() {
-        _disableInitializers();
+    /**
+     * @param seller The address of the the seller.
+     * @param buyer The address of the buyer.
+     * @param assetSold The token the seller is providing.
+     * @param assetSoldAmount The amount of the token the seller is selling.
+     * @param assetReceived The token the buyer is providing.
+     * @param assetReceivedAmount The amount of the token the buyer is paying.
+     * @param hasSellerFee Boolean flag for fees.
+     * @param feeAmount The amount in tokens of the fee.
+     * @param feeToken The address of the token to be used to pay the fee.
+     */
+    struct TradeData {
+        address seller;
+        address buyer;
+        address assetSold;
+        uint256 assetSoldAmount;
+        address assetReceived;
+        uint256 assetReceivedAmount;
+        bool hasSellerFee;
+        uint256 feeAmount;
+        address feeToken;
+    }
+
+    /**
+     * @param holder The address of the token holder claiming the payout.
+     * @param rwaToken The address of the RWA Token that the holder is collecting payout from.
+     * @param paymentToken The address of the ERC20 token that the holder will be paid out in.
+     * @param paymentTokenAmount The amount of the payment token the holder will recieve.
+     * @param useCustomFee A value indicating whether or not to use a custom fee when user is claiming payout.
+     * @param feeValue The value of the fee, used to calculate proper amount for the event emitted in adminClaimPayout.
+     * ^ feeValue must always be in USD (6 decimals)
+     */
+    struct PayoutData {
+        address holder;
+        address rwaToken;
+        address paymentToken;
+        uint256 paymentTokenAmount;
+        bool useCustomFee;
+        uint256 feeValue;
     }
 
     /**
      * @notice Initializes the contract with access manager address.
      * @param initialAuthority The address of the AccessManager.
+     * @param feeRecipient The address where fees are paid out to.
      */
-    function initialize(address initialAuthority) public initializer {
-        __ReentrancyGuard_init();
-        __AccessManaged_init(initialAuthority);
-        __UUPSUpgradeable_init();
+    constructor(
+        address initialAuthority,
+        address fundingWallet,
+        address feeRecipient
+    ) AccessManaged(initialAuthority) ReentrancyGuard() {
+        _fundingWallet = fundingWallet;
+        _feeRecipient = feeRecipient;
+    }
+
+    /**
+     * @notice Sets a new address as the funding wallet
+     * @param newWallet The address of the new funding wallet.
+     */
+    function setFundingWallet(address newWallet) external restricted {
+        if (newWallet == address(0)) revert InvalidAddress();
+        _fundingWallet = newWallet;
+    }
+
+    /**
+     * @notice Sets a new address as the fee recipient
+     * @param newRecipient The address of the new fee recpient
+     */
+    function setFeeRecipient(address newRecipient) external restricted {
+        if (newRecipient == address(0)) revert InvalidAddress();
+        _feeRecipient = newRecipient;
     }
 
     /**
      * @notice Facilitates the swap of one type of token for another.
      * @dev Both parties must 'approve' or 'permit' funds to the contract before calling this function.
-     * @param initiator The address initiating the swap.
-     * @param counterparty The address of the counterparty providing the alternate token.
-     * @param fromPaymentAddress The address of the token being swapped from.
-     * @param toPaymentAddress The address of the token being swapped to.
-     * @param fromAmount The amount of the token being swapped from.
-     * @param toAmount The amount of the token being swapped to.
+     * @param data The struct containing the data for the function.
      */
-    function facilitateSwap(
-        address initiator,
-        address counterparty,
-        address fromPaymentAddress,
-        address toPaymentAddress,
-        uint256 fromAmount,
-        uint256 toAmount
+    function swapTokens(
+        TradeData calldata data
     ) external restricted nonReentrant {
+        address seller = data.seller;
+        address buyer = data.buyer;
+        _validateAddresses(seller, buyer, data.assetReceived, data.assetSold);
+
+        if (data.hasSellerFee)
+            _chargeFee(buyer, _feeRecipient, data.feeToken, data.feeAmount);
+
+        IERC20(data.assetReceived).transferFrom(
+            buyer,
+            seller,
+            data.assetReceivedAmount
+        );
+        IERC20(data.assetSold).transferFrom(
+            seller,
+            buyer,
+            data.assetSoldAmount
+        );
+    }
+
+    /**
+     * @notice Facilitates the transfer of Remora RWA token for payment token.
+     * @dev Both parties must 'approve' or 'permit' funds to the contract before calling this function.
+     * @param data The struct containing the data for the function.
+     */
+    function processRwaSale(
+        TradeData calldata data
+    ) external restricted nonReentrant {
+        address seller = data.seller;
+        address buyer = data.buyer;
+        _validateAddresses(seller, buyer, data.assetSold, data.assetReceived);
+
+        IERC20(data.assetReceived).transferFrom(
+            buyer,
+            seller,
+            data.assetReceivedAmount
+        );
+        if (data.hasSellerFee)
+            _chargeFee(seller, _feeRecipient, data.feeToken, data.feeAmount);
+
+        IRwaToken(data.assetSold).adminTransferFrom(
+            seller,
+            buyer,
+            data.assetSoldAmount
+        );
+    }
+
+    /**
+     * @notice Calls adminPayoutClaim from RWAToken contract and pays out the holder.
+     * @param data The struct containing the data for the function.
+     */
+    function processPayout(
+        PayoutData calldata data
+    ) external restricted nonReentrant {
+        address holder = data.holder;
+
         if (
-            fromPaymentAddress == address(0) ||
-            toPaymentAddress == address(0) ||
-            initiator == address(0) ||
-            counterparty == address(0)
+            holder == address(0) ||
+            data.rwaToken == address(0) ||
+            data.paymentToken == address(0)
         ) revert InvalidAddress();
 
-        IERC20 fromToken = IERC20(fromPaymentAddress);
-        IERC20 toToken = IERC20(toPaymentAddress);
-
-        // Step 1: Transfer 'from' payment from initiator to counterparty
-        SafeERC20.safeTransferFrom(
-            fromToken,
-            initiator,
-            counterparty,
-            fromAmount
+        IRwaToken(data.rwaToken).adminClaimPayout(
+            holder,
+            false,
+            data.useCustomFee,
+            data.feeValue
         );
 
-        // Step 2: Transfer 'to' payment from counterparty to the initiator
-        SafeERC20.safeTransferFrom(toToken, counterparty, initiator, toAmount);
-
-        emit SwapSuccess(
-            initiator,
-            counterparty,
-            fromPaymentAddress,
-            fromAmount,
-            toPaymentAddress,
-            toAmount
+        IERC20(data.paymentToken).transferFrom(
+            _fundingWallet,
+            holder,
+            data.paymentTokenAmount
         );
     }
 
-    /**
-     * @notice Used to upgrade smart contract. Restricted to authorized accounts.
-     * @param newImplementation The address of the new implementation to be upgraded to.
-     * @param data The data used for initializing the new contract.
-     */
-    function upgradeToAndCall(
-        address newImplementation,
-        bytes memory data
-    ) public payable override restricted {
-        super.upgradeToAndCall(newImplementation, data);
+    function _validateAddresses(
+        address a,
+        address b,
+        address c,
+        address d
+    ) internal pure {
+        if (
+            a == address(0) ||
+            b == address(0) ||
+            c == address(0) ||
+            d == address(0)
+        ) revert InvalidAddress();
     }
 
-    /**
-     * @notice Authorizes upgrades for the contract.
-     * @dev Override required by solidity.
-     * @param newImplementation The address of the new implementation.
-     */
-    function _authorizeUpgrade(address newImplementation) internal override {}
+    function _chargeFee(
+        address payer,
+        address recipient,
+        address token,
+        uint256 amount
+    ) internal {
+        if (token == address(0) || recipient == address(0))
+            revert InvalidAddress();
+        IERC20(token).transferFrom(payer, recipient, amount);
+    }
 }

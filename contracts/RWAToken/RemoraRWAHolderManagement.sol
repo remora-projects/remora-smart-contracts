@@ -2,7 +2,6 @@
 pragma solidity ^0.8.22;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 import {AccessManagedUpgradeable} from "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
@@ -26,7 +25,7 @@ abstract contract RemoraRWAHolderManagement is
     /// @dev Contains token holder's data.
     struct HolderStatus {
         bool isFrozen;
-        /// @dev Whether or not their rent has been previously calulated.
+        /// @dev Whether or not their payout balance has been previously calulated.
         bool isCalculated;
         /// @dev The index in which the user has been frozen.
         uint8 frozenIndex;
@@ -51,8 +50,8 @@ abstract contract RemoraRWAHolderManagement is
         address _wallet;
         /// @dev The IERC20 stablecoin used for facilitating payouts.
         IERC20 _stablecoin;
-        /// @dev The fee percentage deducted from payouts, represented with 3 decimals (e.g., 1000 = 1%, 100000 = 100%).
-        uint256 _feePercentage;
+        /// @dev The fixed fee deducted from payouts, in USD, represented with 6 decimals.
+        uint256 _payoutFee;
         /// @dev The current index that is yet to be paid out.
         uint8 _currentPayoutIndex;
         /// @dev mapping of payouts that the payout indices correlate to.
@@ -68,32 +67,44 @@ abstract contract RemoraRWAHolderManagement is
         0xd108a17532ee59ddb9baf9e5c8fe64833cf87c04e2b5867293af0a3e63efc200;
 
     /**
-     * @notice Event emitted when the fee percent is updated.
-     * @param newFeePercentage New value for fee percentage.
+     * @notice Event emitted when the payout fee is updated.
+     * @param newFee New value for the fixed payout fee.
      */
-    event FeePercentUpdated(uint256 newFeePercentage);
+    event PayoutFeeUpdated(uint256 newFee);
 
     /**
-     * @notice Event emitted when the stablecoin for rent payouts is updated.
+     * @notice Event emitted when the stablecoin for payouts is updated.
      * @param newStablecoin Address of the ERC20 stablcoin contract.
      */
     event StablecoinChanged(address newStablecoin);
 
     /**
-     * @notice Event emitted when a holder claims their rental payout.
+     * @notice Event emitted when a holder claims their payout.
      * @param holder The address of the holder.
-     * @param amount The amount of rent claimed.
+     * @param amount The value of payout claimed.
      */
-    event RentClaimed(address holder, uint256 amount);
+    event PayoutClaimed(address indexed holder, uint256 amount);
 
     /**
-     * @notice Event emitted when rental payouts are distributed among token holders.
-     * @param totalDistributed The total amount of rent distributed in USDC (6 decimals).
+     * @notice Event emitted when payouts are distributed among token holders.
+     * @param totalDistributed The total value of the payout distributed in USD stablecoin (6 decimals).
      */
-    event RentDistributed(uint256 totalDistributed);
+    event PayoutDistributed(uint256 totalDistributed);
 
-    /// @notice Error indicating that a holder attempted to claim rent when their payout balance is zero.
-    error NoRentToClaim();
+    /**
+     * @notice Event emitted when a holder is frozen.
+     * @param holder The address of the holder that has been frozen.
+     */
+    event HolderFrozen(address indexed holder);
+
+    /**
+     * @notice Event emitted when a holder is unfrozen.
+     * @param holder The address of the holder that has been unfrozen.
+     */
+    event HolderUnfrozen(address indexed holder);
+
+    /// @notice Error indicating that a holder attempted to claim payout when their available balance is zero.
+    error NoPayoutToClaim();
 
     /// @notice Error indicating that the contract has insufficient stablecoin balance for the requested operation.
     error InsufficentStablecoinBalance();
@@ -104,65 +115,61 @@ abstract contract RemoraRWAHolderManagement is
     /// @notice Error indicating that a function was called with an invalid address.
     error InvalidAddress();
 
-    /// @notice Error indicating that the fee value inputted is too high.
-    error FeeTooHigh();
-
     /**
-     * @notice Initializes the contract with the initial authority, stablecoin address, withdrawal wallet address, and fee percentage.
+     * @notice Initializes the contract with the initial authority, stablecoin address, withdrawal wallet address, and fixed fee.
      * @dev Should be called during deployment or upgrade to set initial state.
      * @param _initialAuthority The address of the access manager contract.
      * @param _stablecoin The address of the stablecoin contract.
      * @param _wallet The address of the withdrawal wallet.
-     * @param _feePercentage The fee percentage (3 decimals, e.g., 1000 = 1%).
+     * @param _payoutFee The fixed payout fee, in USD stablecoin, 6 decimals.
      */
     function __RemoraHolderManagement_init(
         address _initialAuthority,
         address _stablecoin,
         address _wallet,
-        uint256 _feePercentage
+        uint256 _payoutFee
     ) internal onlyInitializing {
         __AccessManaged_init(_initialAuthority);
         __ReentrancyGuard_init();
         __RemoraHolderManagement_init_unchained(
             _stablecoin,
             _wallet,
-            _feePercentage
+            _payoutFee
         );
     }
 
     /**
-     * @notice Sets the stablecoin, wallet, and fee percentage in the PayOut storage during initialization.
+     * @notice Sets the stablecoin, wallet, and fee value in the PayOut storage during initialization.
      * @dev Part of the initialization process.
      * @param _stablecoin The address of the stablecoin contract.
      * @param _wallet The address of the withdrawal wallet.
-     * @param _feePercentage The fee percentage (3 decimals, e.g., 1000 = 1%).
+     * @param _payoutFee The fixed payout fee, in USD stablecoin, 6 decimals.
      */
     function __RemoraHolderManagement_init_unchained(
         address _stablecoin,
         address _wallet,
-        uint256 _feePercentage
+        uint256 _payoutFee
     ) internal onlyInitializing {
         HolderManagementStorage storage $ = _getHolderManagementStorage();
         $._stablecoin = IERC20(_stablecoin);
         $._wallet = _wallet;
-        $._feePercentage = _feePercentage;
+        $._payoutFee = _payoutFee;
         $._currentPayoutIndex = 0;
     }
 
     /**
-     * @notice Used to set new value for the fee percentage.
+     * @notice Used to set new value for the fixed payout fee.
      * @dev Restricted to authorized accounts
-     * @param newFeePercentage The new value for the fee percentage. With 3 decimals.
+     * @param newFee The new value for the fixed payout fee, in USD, 6 decimals.
      */
-    function setFeePercentage(uint256 newFeePercentage) external restricted {
-        if (newFeePercentage > 100000) revert FeeTooHigh();
+    function setPayoutFee(uint256 newFee) external restricted {
         HolderManagementStorage storage $ = _getHolderManagementStorage();
-        $._feePercentage = newFeePercentage;
-        emit FeePercentUpdated(newFeePercentage);
+        $._payoutFee = newFee;
+        emit PayoutFeeUpdated(newFee);
     }
 
     /**
-     * @notice Updates the stablecoin address used for payouts.
+     * @notice Updates the stablecoin used for payouts.
      * @dev Restricted to authorized accounts
      * @param stablecoin The address of the new stablecoin contract.
      */
@@ -187,64 +194,66 @@ abstract contract RemoraRWAHolderManagement is
     /**
      * @notice Freezes a holder if they are not already frozen.
      * @dev Restricted to authorized accounts
-     * @param account The address of the token holder to be frozen.
+     * @param holder The address of the token holder to be frozen.
      */
-    function freezeHolder(address account) external restricted {
-        if (account == address(0)) revert InvalidAddress();
+    function freezeHolder(address holder) external restricted {
+        if (holder == address(0)) revert InvalidAddress();
         HolderManagementStorage storage $ = _getHolderManagementStorage();
-        if (!$._holderStatus[account].isFrozen) {
-            $._holderStatus[account].isFrozen = true;
-            $._holderStatus[account].frozenIndex = $._currentPayoutIndex;
+        if (!$._holderStatus[holder].isFrozen) {
+            $._holderStatus[holder].isFrozen = true;
+            $._holderStatus[holder].frozenIndex = $._currentPayoutIndex;
+            emit HolderFrozen(holder);
         }
     }
 
     /**
-     * @notice Unfreezes a token holder and their rental balance.
+     * @notice Unfreezes a token holder and their payout balance.
      * @dev Restricted to authorized accounts
-     * @param account The address of the token holder to be unfrozen.
+     * @param holder The address of the token holder to be unfrozen.
      */
-    function unFreezeHolder(address account) external restricted {
-        if (account == address(0)) revert InvalidAddress();
+    function unFreezeHolder(address holder) external restricted {
+        if (holder == address(0)) revert InvalidAddress();
         HolderManagementStorage storage $ = _getHolderManagementStorage();
-        if ($._holderStatus[account].isFrozen) {
-            $._holderStatus[account].isFrozen = false;
+        if ($._holderStatus[holder].isFrozen) {
+            $._holderStatus[holder].isFrozen = false;
+            emit HolderUnfrozen(holder);
         }
     }
 
     /**
-     * @notice Distributes rental payments to users for current index.
+     * @notice Distributes payouts to users for current index.
      * @dev Restricted to authorized accounts
-     * @param rentAmount The amount of rent to distribute. In stablecoin USD, 6 decimals.
+     * @param payoutAmount The value to distribute among token holders. In stablecoin USD, 6 decimals.
      */
-    function distributeRentalPayments(uint256 rentAmount) external restricted {
+    function distributePayout(uint256 payoutAmount) external restricted {
         HolderManagementStorage storage $ = _getHolderManagementStorage();
-        $._payouts[$._currentPayoutIndex++] = rentAmount;
-        emit RentDistributed(rentAmount);
+        $._payouts[$._currentPayoutIndex++] = payoutAmount;
+        emit PayoutDistributed(payoutAmount);
     }
 
     /**
-     * @notice Allows a holder to claim their rental payouts.
+     * @notice Allows a holder to claim their payouts.
      * @dev Deducts the fee and transfers the payout via stablecoin or an alternative mechanism.
      * Internal function, to be called within an external wrapper.
      * Function calling it needs reentrancy guard.
-     * @param holder The address of the holder attempting to claim rent.
-     * @param useStablecoin A boolean indicating whether to use stablecoin for the payout.
-     * @param useCustomFee A boolean indiciating whetehr to use a custom fee or not.
+     * @param holder The address of the holder attempting to claim payout.
+     * @param useStablecoin A value indicating whether to use stablecoin for the payout.
+     * @param useCustomFee A value indiciating whetehr to use a custom fee or not.
      * @param feeValue The custom fee value to use if useCustomFee is true.
      */
-    function _claimRent(
+    function _claimPayout(
         address holder,
         bool useStablecoin,
         bool useCustomFee,
         uint256 feeValue
     ) internal {
         HolderManagementStorage storage $ = _getHolderManagementStorage();
-        uint256 rentAmount = rentBalance(holder);
+        uint256 payoutAmount = payoutBalance(holder);
 
-        if (rentAmount == 0) revert NoRentToClaim();
+        if (payoutAmount == 0) revert NoPayoutToClaim();
 
         if (balanceOf(holder) == 0) {
-            // if user is not a holder after claiming rent, delete thier data
+            // if user is not a holder after claiming payout, delete thier data
             deleteUserData($, holder);
         } else {
             // else, update their data reflecting the recent claim
@@ -257,21 +266,20 @@ abstract contract RemoraRWAHolderManagement is
         }
 
         //update the fee depending on the inputs
-        uint256 activeFee = useCustomFee ? feeValue : $._feePercentage;
-        rentAmount -= (rentAmount * activeFee) / 100000; // division by 100, with 3 decimals
+        payoutAmount -= useCustomFee ? feeValue : $._payoutFee;
 
         if (useStablecoin) {
             //If the user decides to be paid out in the stable coin
             uint256 stablecoinBalance = $._stablecoin.balanceOf(address(this));
 
-            if (rentAmount > stablecoinBalance) {
+            if (payoutAmount > stablecoinBalance) {
                 revert InsufficentStablecoinBalance();
             }
 
-            SafeERC20.safeTransfer($._stablecoin, holder, rentAmount);
+            $._stablecoin.transfer(holder, payoutAmount);
         }
 
-        emit RentClaimed(holder, rentAmount);
+        emit PayoutClaimed(holder, payoutAmount);
     }
 
     /**
@@ -291,7 +299,7 @@ abstract contract RemoraRWAHolderManagement is
             revert InsufficentStablecoinBalance();
         }
 
-        SafeERC20.safeTransfer($._stablecoin, $._wallet, valueToClaim);
+        $._stablecoin.transfer($._wallet, valueToClaim);
     }
 
     /**
@@ -306,9 +314,11 @@ abstract contract RemoraRWAHolderManagement is
     /**
      * @notice Retrieves the payout balance of a specified holder.
      * @param holder The address of the holder.
-     * @return rentAmount The current payout balance of the holder.
+     * @return payoutAmount The current payout balance of the holder.
      */
-    function rentBalance(address holder) public returns (uint256 rentAmount) {
+    function payoutBalance(
+        address holder
+    ) public returns (uint256 payoutAmount) {
         HolderManagementStorage storage $ = _getHolderManagementStorage();
         HolderStatus storage holderStatus = $._holderStatus[holder];
         uint8 currentPayoutIndex = $._currentPayoutIndex;
@@ -346,11 +356,11 @@ abstract contract RemoraRWAHolderManagement is
             ) {
                 --balanceHistoryIndex;
             }
-            rentAmount += ($
+            payoutAmount += ($
             ._balanceHistory[holder][balanceHistoryIndex].tokenBalance *
                 $._payouts[i]);
             if (
-                balanceHistoryIndex == i && //TODO test
+                balanceHistoryIndex == i &&
                 balanceHistoryIndex != holderStatus.mostRecentEntry
             ) {
                 // Deletes old unneeded history entries
@@ -359,12 +369,14 @@ abstract contract RemoraRWAHolderManagement is
             }
             if (i == 0) break; // to prevent potential overflow
         }
-        rentAmount = holderStatus.calculatedPayout + (rentAmount / totalSupply);
+        payoutAmount =
+            holderStatus.calculatedPayout +
+            (payoutAmount / totalSupply);
 
         //update values
         holderStatus.isCalculated = true;
         holderStatus.lastPayoutIndexCalculated = payRangeStart;
-        holderStatus.calculatedPayout = rentAmount;
+        holderStatus.calculatedPayout = payoutAmount;
     }
 
     /**
@@ -421,7 +433,7 @@ abstract contract RemoraRWAHolderManagement is
         if (from != address(0)) {
             // remove/update holder
             uint256 fromBalance = balanceOf(from);
-            if (fromBalance == 0 && rentBalance(from) == 0) {
+            if (fromBalance == 0 && payoutBalance(from) == 0) {
                 deleteUserData($, from);
                 return;
             }
@@ -446,7 +458,7 @@ abstract contract RemoraRWAHolderManagement is
      * @return $ The storage reference for PayOutStorage.
      */
     function _getHolderManagementStorage()
-        private
+        internal
         pure
         returns (HolderManagementStorage storage $)
     {
