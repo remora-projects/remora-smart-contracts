@@ -99,14 +99,20 @@ async function setUpAccessManagerIntermediary( // only call after setting up tok
     getSelector("adminClaimPayout(address,bool,bool,uint256)"),
   ];
 
-  const custodian_selectors = [getSelector("setFeeRecipient(address)")];
+  const custodian_selectors = [
+    getSelector("setFeeRecipient(address)"),
+    getSelector("setFundingWallet(address)"),
+  ];
 
   const facilitator_selectors = [
     getSelector(
-      "facilitateSwap(address,address,address,uint256,address,uint256)"
+      "swapTokens((address,address,address,uint256,address,uint256,bool,uint256,address))"
     ),
     getSelector(
-      "facilitateTransfer(address,address,address,uint256,address,uint256)"
+      "processRwaSale((address,address,address,uint256,address,uint256,bool,uint256,address))"
+    ),
+    getSelector(
+      "processPayout((address,address,address,uint256,bool,uint256))"
     ),
   ];
 

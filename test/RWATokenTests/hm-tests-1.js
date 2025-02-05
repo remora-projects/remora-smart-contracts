@@ -226,39 +226,6 @@ describe("RemoraRWAToken Holder Management Tests 1", function () {
       ).to.be.revertedWithCustomError(remoratoken, "NoPayoutToClaim");
     });
 
-    it("Should calculate correct payout even if buyer never checks after multiple distributions", async function () {
-      const {
-        investor1,
-        custodian,
-        facilitator,
-        remoratoken,
-        allowlist,
-        ausd,
-      } = await loadFixture(holderManagementTestsSetUp);
-
-      await allowlist.connect(custodian).allowUser(investor1.address);
-
-      //send $10,000 to the contract
-      await ausd.transfer(remoratoken.target, 10000000000);
-
-      //investor 1 has 2 tokens enters at init, 0
-      await remoratoken.transfer(investor1.address, 4);
-
-      //first payout
-      await remoratoken.connect(facilitator).distributePayout(1000000000);
-      await remoratoken.connect(facilitator).distributePayout(1000000000);
-      await remoratoken.connect(facilitator).distributePayout(1000000000);
-      await remoratoken.connect(facilitator).distributePayout(1000000000);
-
-      expect(
-        await remoratoken.connect(investor1).claimPayout()
-      ).to.changeTokenBalances(
-        ausd,
-        [remoratoken, investor1],
-        [-2000000000, +2000000000]
-      );
-    });
-
     it("Should allow claim of older payouts but not new payouts, after User sold all tokens", async function () {
       const {
         owner,
@@ -295,6 +262,39 @@ describe("RemoraRWAToken Holder Management Tests 1", function () {
         ausd,
         [remoratoken, investor1],
         [-400000000, +400000000]
+      );
+    });
+
+    it("Should calculate correct payout even if buyer never checks after multiple distributions", async function () {
+      const {
+        investor1,
+        custodian,
+        facilitator,
+        remoratoken,
+        allowlist,
+        ausd,
+      } = await loadFixture(holderManagementTestsSetUp);
+
+      await allowlist.connect(custodian).allowUser(investor1.address);
+
+      //send $10,000 to the contract
+      await ausd.transfer(remoratoken.target, 10000000000);
+
+      //investor 1 has 2 tokens enters at init, 0
+      await remoratoken.transfer(investor1.address, 4);
+
+      //first payout
+      await remoratoken.connect(facilitator).distributePayout(1000000000);
+      await remoratoken.connect(facilitator).distributePayout(1000000000);
+      await remoratoken.connect(facilitator).distributePayout(1000000000);
+      await remoratoken.connect(facilitator).distributePayout(1000000000);
+
+      expect(
+        await remoratoken.connect(investor1).claimPayout()
+      ).to.changeTokenBalances(
+        ausd,
+        [remoratoken, investor1],
+        [-2000000000, +2000000000]
       );
     });
 

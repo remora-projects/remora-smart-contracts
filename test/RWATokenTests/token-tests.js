@@ -13,6 +13,43 @@ describe("RemoraRWAToken Tests", function () {
     return await deployContractsAndSetVariables(10, 0, 0);
   }
 
+  it("Should successfully transfer token with fee", async function () {
+    const { investor1, custodian, remoratoken, ausd, allowlist } =
+      await loadFixture(setUpRemoraRWATests);
+
+    await allowlist.connect(custodian).allowUser(investor1.address);
+    await remoratoken.connect(custodian).setTransferFee(500);
+
+    await expect(
+      remoratoken.transfer(investor1.address, 10)
+    ).to.be.revertedWithCustomError(ausd, "ERC20InsufficientAllowance");
+  });
+
+  it("Should successfully transfer tokens with fee", async function () {
+    const { owner, investor1, custodian, remoratoken, ausd, allowlist } =
+      await loadFixture(setUpRemoraRWATests);
+
+    await allowlist.connect(custodian).allowUser(investor1.address);
+    await remoratoken.transfer(investor1.address, 10);
+    await ausd.transfer(investor1, 500);
+    await remoratoken.connect(custodian).setTransferFee(500);
+
+    await ausd.connect(investor1).approve(remoratoken.target, 500);
+
+    const tx = remoratoken.connect(investor1).transfer(owner.address, 10);
+    await expect(tx).to.changeTokenBalances(
+      remoratoken,
+      [investor1, owner],
+      [-10, +10]
+    );
+
+    await expect(tx).to.changeTokenBalances(
+      ausd,
+      [investor1, owner],
+      [-500, +500]
+    );
+  });
+
   it("Should pause halting transfer, then unpause", async function () {
     const {
       owner,
