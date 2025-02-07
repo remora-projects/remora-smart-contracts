@@ -8,7 +8,10 @@ contract RemoraOFT is OFT {
     constructor(
         string memory _name,
         string memory _symbol,
+        uint256 _initialSupply,
         address _lzEndpoint,
         address _delegate
-    ) OFT(_name, _symbol, _lzEndpoint, _delegate) Ownable(_delegate) {}
+    ) OFT(_name, _symbol, _lzEndpoint, _delegate) Ownable(_delegate) {
+        _mint(msg.sender, _initialSupply);
+    }
 }
