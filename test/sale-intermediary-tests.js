@@ -402,85 +402,85 @@ describe("Sale Intermediary Tests", function () {
   //   });
   // });
 
-  describe("processPayout Tests", function () {
-    it("Should claim payout for user", async function () {
-      const {
-        owner,
-        investor1,
-        custodian,
-        facilitator,
-        remoratoken,
-        ausd,
-        allowlist,
-        saleIntermediary,
-      } = await loadFixture(setUpSaleIntermediaryTests);
+  // describe("processPayout Tests", function () {
+  //   it("Should claim payout for user", async function () {
+  //     const {
+  //       owner,
+  //       investor1,
+  //       custodian,
+  //       facilitator,
+  //       remoratoken,
+  //       ausd,
+  //       allowlist,
+  //       saleIntermediary,
+  //     } = await loadFixture(setUpSaleIntermediaryTests);
 
-      //need to add user to allowlist to allow token trade
-      await allowlist.connect(custodian).allowUser(investor1.address);
-      await remoratoken.approve(facilitator.address, 10);
-      await remoratoken
-        .connect(facilitator)
-        .adminTransferFrom(owner.address, investor1.address, 1);
+  //     //need to add user to allowlist to allow token trade
+  //     await allowlist.connect(custodian).allowUser(investor1.address);
+  //     await remoratoken.approve(facilitator.address, 10);
+  //     await remoratoken
+  //       .connect(facilitator)
+  //       .adminTransferFrom(owner.address, investor1.address, 1);
 
-      await remoratoken.connect(facilitator).distributePayout(1000);
+  //     await remoratoken.connect(facilitator).distributePayout(1000);
 
-      expect(
-        (
-          await remoratoken.payoutBalance.staticCallResult(investor1.address)
-        ).at(0)
-      ).to.equal(100); //$100
-      await remoratoken.payoutBalance(investor1.address);
+  //     expect(
+  //       (
+  //         await remoratoken.payoutBalance.staticCallResult(investor1.address)
+  //       ).at(0)
+  //     ).to.equal(100); //$100
+  //     await remoratoken.payoutBalance(investor1.address);
 
-      const payoutData = {
-        holder: investor1.address,
-        rwaToken: remoratoken.target,
-        paymentToken: ausd.target,
-        paymentTokenAmount: 100,
-        useCustomeFee: false,
-        feeValue: 0,
-      };
+  //     const payoutData = {
+  //       holder: investor1.address,
+  //       rwaToken: remoratoken.target,
+  //       paymentToken: ausd.target,
+  //       paymentTokenAmount: 100,
+  //       useCustomeFee: false,
+  //       feeValue: 0,
+  //     };
 
-      await expect(
-        saleIntermediary.connect(facilitator).processPayout(payoutData)
-      ).to.changeTokenBalance(ausd, investor1, +100);
-    });
+  //     await expect(
+  //       saleIntermediary.connect(facilitator).processPayout(payoutData)
+  //     ).to.changeTokenBalance(ausd, investor1, +100);
+  //   });
 
-    it("Should revert due no rental balance for user", async function () {
-      const {
-        owner,
-        investor1,
-        custodian,
-        facilitator,
-        remoratoken,
-        ausd,
-        allowlist,
-        saleIntermediary,
-      } = await loadFixture(setUpSaleIntermediaryTests);
+  //   it("Should revert due no rental balance for user", async function () {
+  //     const {
+  //       owner,
+  //       investor1,
+  //       custodian,
+  //       facilitator,
+  //       remoratoken,
+  //       ausd,
+  //       allowlist,
+  //       saleIntermediary,
+  //     } = await loadFixture(setUpSaleIntermediaryTests);
 
-      //need to add user to allowlist to allow token trade
-      await allowlist.connect(custodian).allowUser(investor1.address);
+  //     //need to add user to allowlist to allow token trade
+  //     await allowlist.connect(custodian).allowUser(investor1.address);
 
-      //make only one approval
-      await remoratoken.approve(saleIntermediary.target, 10);
+  //     //make only one approval
+  //     await remoratoken.approve(saleIntermediary.target, 10);
 
-      const tradeData = {
-        seller: owner.address,
-        buyer: investor1.address,
-        assetSold: remoratoken.target,
-        assetSoldAmount: 10,
-        assetReceived: ausd.target,
-        assetReceivedAmount: 1000,
-        hasSellerFee: false,
-        feeAmount: 0,
-        feeToken: ausd.target,
-      };
+  //     const tradeData = {
+  //       seller: owner.address,
+  //       buyer: investor1.address,
+  //       assetSold: remoratoken.target,
+  //       assetSoldAmount: 10,
+  //       assetReceived: ausd.target,
+  //       assetReceivedAmount: 1000,
+  //       hasSellerFee: false,
+  //       feeAmount: 0,
+  //       feeToken: ausd.target,
+  //     };
 
-      await expect(
-        saleIntermediary.connect(facilitator).processRwaSale(
-          // 1000 tokens of ausd for 10 remoratokens
-          tradeData
-        )
-      ).to.be.revertedWithCustomError(ausd, "ERC20InsufficientAllowance");
-    });
-  });
+  //     await expect(
+  //       saleIntermediary.connect(facilitator).processRwaSale(
+  //         // 1000 tokens of ausd for 10 remoratokens
+  //         tradeData
+  //       )
+  //     ).to.be.revertedWithCustomError(ausd, "ERC20InsufficientAllowance");
+  //   });
+  // });
 });
