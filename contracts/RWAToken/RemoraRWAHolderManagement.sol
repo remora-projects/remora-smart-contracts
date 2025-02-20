@@ -38,6 +38,12 @@ abstract contract RemoraRWAHolderManagement is
         uint256 calculatedPayout;
     }
 
+    /// @dev Contains info at the time of payout distribution
+    struct payoutStruct {
+        uint256 amount;
+        uint256 totalSupply;
+    }
+
     /// @dev Contains holder's token balance and indicator of if entry is valid or not.
     struct TokenBalanceChange {
         bool isValid;
@@ -54,8 +60,8 @@ abstract contract RemoraRWAHolderManagement is
         uint256 _payoutFee;
         /// @dev The current index that is yet to be paid out.
         uint8 _currentPayoutIndex;
-        /// @dev mapping of payouts that the payout indices correlate to.
-        mapping(uint256 => uint256) _payouts;
+        /// @dev mapping to a struct containing payout amounts and tokenSupply that the payout indices correlate to.
+        mapping(uint256 => payoutStruct) _payouts;
         /// @dev A mapping of token holder addresses to a struct containing holder info.
         mapping(address => HolderStatus) _holderStatus;
         /// @dev A mapping that links holder addresses to another mapping that links payout indices to TokenBalanceChange structs.
@@ -227,7 +233,10 @@ abstract contract RemoraRWAHolderManagement is
      */
     function distributePayout(uint256 payoutAmount) external restricted {
         HolderManagementStorage storage $ = _getHolderManagementStorage();
-        $._payouts[$._currentPayoutIndex++] = payoutAmount;
+        $._payouts[$._currentPayoutIndex++] = payoutStruct({
+            amount: payoutAmount,
+            totalSupply: totalSupply()
+        });
         emit PayoutDistributed(payoutAmount);
     }
 
@@ -314,11 +323,8 @@ abstract contract RemoraRWAHolderManagement is
     /**
      * @notice Retrieves the payout balance of a specified holder.
      * @param holder The address of the holder.
-     * @return payoutAmount The current payout balance of the holder.
      */
-    function payoutBalance(
-        address holder
-    ) public returns (uint256 payoutAmount) {
+    function payoutBalance(address holder) public returns (uint256) {
         HolderManagementStorage storage $ = _getHolderManagementStorage();
         HolderStatus storage holderStatus = $._holderStatus[holder];
         uint8 currentPayoutIndex = $._currentPayoutIndex;
@@ -337,7 +343,7 @@ abstract contract RemoraRWAHolderManagement is
             return holderStatus.calculatedPayout;
         }
 
-        uint256 totalSupply = totalSupply();
+        uint256 payoutAmount;
         uint8 payRangeStart = holderStatus.isFrozen
             ? holderStatus.frozenIndex - 1
             : currentPayoutIndex - 1;
@@ -356,9 +362,11 @@ abstract contract RemoraRWAHolderManagement is
             ) {
                 --balanceHistoryIndex;
             }
-            payoutAmount += ($
-            ._balanceHistory[holder][balanceHistoryIndex].tokenBalance *
-                $._payouts[i]);
+            payoutStruct memory pInfo = $._payouts[i];
+            payoutAmount +=
+                ($._balanceHistory[holder][balanceHistoryIndex].tokenBalance *
+                    pInfo.amount) /
+                pInfo.totalSupply;
             if (
                 balanceHistoryIndex == i &&
                 balanceHistoryIndex != holderStatus.mostRecentEntry
@@ -369,14 +377,12 @@ abstract contract RemoraRWAHolderManagement is
             }
             if (i == 0) break; // to prevent potential overflow
         }
-        payoutAmount =
-            holderStatus.calculatedPayout +
-            (payoutAmount / totalSupply);
+        holderStatus.calculatedPayout += payoutAmount;
 
         //update values
         holderStatus.isCalculated = true;
         holderStatus.lastPayoutIndexCalculated = payRangeStart;
-        holderStatus.calculatedPayout = payoutAmount;
+        return holderStatus.calculatedPayout;
     }
 
     /**
