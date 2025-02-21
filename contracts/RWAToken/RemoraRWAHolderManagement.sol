@@ -27,15 +27,19 @@ abstract contract RemoraRWAHolderManagement is
         bool isFrozen;
         /// @dev Whether or not their payout balance has been previously calulated.
         bool isCalculated;
+        /// @dev Whether or not the investor is token holder.
+        bool isHolder;
+        /// @dev Whether or not the holder has signed the terms and conditions.
+        bool signedTC; //Must be true in order to recieve token
         /// @dev The index in which the user has been frozen.
         uint8 frozenIndex;
         uint8 lastPayoutIndexCalculated;
-        /// @dev Number of entries in balance history mapping.
-        uint8 numEntries;
         /// @dev The index of the most recent entry in balance history.
         uint8 mostRecentEntry;
         /// @dev The value of the most recently calculated payout.
         uint256 calculatedPayout;
+        /// @dev The timestamp of when the user was frozen.
+        uint256 frozenTimestamp;
     }
 
     /// @dev Contains info at the time of payout distribution
@@ -109,14 +113,23 @@ abstract contract RemoraRWAHolderManagement is
      */
     event HolderUnfrozen(address indexed holder);
 
+    /**
+     * @notice Event emitted when a holder has signed the T&C
+     * @param holder The address of the holder that has signed
+     */
+    event SignedTermsAndConditions(address indexed holder);
+
     /// @notice Error indicating that a holder attempted to claim payout when their available balance is zero.
-    error NoPayoutToClaim();
+    error NoPayoutToClaim(address holder);
 
     /// @notice Error indicating that the contract has insufficient stablecoin balance for the requested operation.
     error InsufficentStablecoinBalance();
 
     /// @notice Error indicating that a frozen user is restricted from the requested operation.
-    error UserIsFrozen();
+    error UserIsFrozen(address holder);
+
+    /// @notice Error indicating that a user has not signed the terms and conditions.
+    error TermsAndConditionsNotSigned(address holder);
 
     /// @notice Error indicating that a function was called with an invalid address.
     error InvalidAddress();
@@ -208,6 +221,7 @@ abstract contract RemoraRWAHolderManagement is
         if (!$._holderStatus[holder].isFrozen) {
             $._holderStatus[holder].isFrozen = true;
             $._holderStatus[holder].frozenIndex = $._currentPayoutIndex;
+            $._holderStatus[holder].frozenTimestamp = block.timestamp;
             emit HolderFrozen(holder);
         }
     }
@@ -223,6 +237,19 @@ abstract contract RemoraRWAHolderManagement is
         if ($._holderStatus[holder].isFrozen) {
             $._holderStatus[holder].isFrozen = false;
             emit HolderUnfrozen(holder);
+        }
+    }
+
+    /**
+     * @notice Used when holder has signed token terms and conditions
+     * @param holder The address of the holder
+     */
+    function signTC(address holder) external restricted {
+        if (holder == address(0)) revert InvalidAddress();
+        HolderManagementStorage storage $ = _getHolderManagementStorage();
+        if (!$._holderStatus[holder].signedTC) {
+            $._holderStatus[holder].signedTC = true;
+            emit SignedTermsAndConditions(holder);
         }
     }
 
@@ -259,14 +286,16 @@ abstract contract RemoraRWAHolderManagement is
         HolderManagementStorage storage $ = _getHolderManagementStorage();
         uint256 payoutAmount = payoutBalance(holder);
 
-        if (payoutAmount == 0) revert NoPayoutToClaim();
+        if (payoutAmount == 0) revert NoPayoutToClaim(holder);
 
+        HolderStatus storage holderStatus = $._holderStatus[holder];
         if (balanceOf(holder) == 0) {
-            // if user is not a holder after claiming payout, delete thier data
-            deleteUserData($, holder);
+            // if user is not a holder after claiming payout, delete their data
+            bool signed = holderStatus.signedTC;
+            delete $._holderStatus[holder];
+            holderStatus.signedTC = signed;
         } else {
             // else, update their data reflecting the recent claim
-            HolderStatus storage holderStatus = $._holderStatus[holder];
             holderStatus.lastPayoutIndexCalculated = holderStatus.isFrozen
                 ? holderStatus.frozenIndex
                 : $._currentPayoutIndex;
@@ -279,13 +308,14 @@ abstract contract RemoraRWAHolderManagement is
 
         if (useStablecoin) {
             //If the user decides to be paid out in the stable coin
-            uint256 stablecoinBalance = $._stablecoin.balanceOf(address(this));
+            IERC20 stablecoin = $._stablecoin;
+            uint256 stablecoinBalance = stablecoin.balanceOf(address(this));
 
             if (payoutAmount > stablecoinBalance) {
                 revert InsufficentStablecoinBalance();
             }
 
-            $._stablecoin.transfer(holder, payoutAmount);
+            stablecoin.transfer(holder, payoutAmount);
         }
 
         emit PayoutClaimed(holder, payoutAmount);
@@ -301,14 +331,15 @@ abstract contract RemoraRWAHolderManagement is
         uint256 value
     ) external restricted nonReentrant {
         HolderManagementStorage storage $ = _getHolderManagementStorage();
-        uint256 stablecoinBalance = $._stablecoin.balanceOf(address(this));
+        IERC20 stablecoin = $._stablecoin;
+        uint256 stablecoinBalance = stablecoin.balanceOf(address(this));
         uint256 valueToClaim = claimAll ? stablecoinBalance : value;
 
         if (valueToClaim > stablecoinBalance) {
             revert InsufficentStablecoinBalance();
         }
 
-        $._stablecoin.transfer($._wallet, valueToClaim);
+        stablecoin.transfer($._wallet, valueToClaim);
     }
 
     /**
@@ -321,84 +352,72 @@ abstract contract RemoraRWAHolderManagement is
     }
 
     /**
+     * @notice Returns signed status of an address
+     * @param holder The address to check status of.
+     */
+    function hasSignedTC(address holder) public view returns (bool) {
+        HolderManagementStorage storage $ = _getHolderManagementStorage();
+        return $._holderStatus[holder].signedTC;
+    }
+
+    /**
      * @notice Retrieves the payout balance of a specified holder.
      * @param holder The address of the holder.
      */
     function payoutBalance(address holder) public returns (uint256) {
         HolderManagementStorage storage $ = _getHolderManagementStorage();
-        HolderStatus storage holderStatus = $._holderStatus[holder];
+        HolderStatus memory rHolderStatus = $._holderStatus[holder];
         uint8 currentPayoutIndex = $._currentPayoutIndex;
 
         if (
-            (holderStatus.numEntries == 0) || //non-holder calling the function
-            (holderStatus.isFrozen && holderStatus.frozenIndex == 0) || //user has been frozen from the start, thus no payout
-            holderStatus.lastPayoutIndexCalculated == currentPayoutIndex // user has already been paid out up to current payout index
+            (!rHolderStatus.isHolder) || //non-holder calling the function
+            (rHolderStatus.isFrozen && rHolderStatus.frozenIndex == 0) || //user has been frozen from the start, thus no payout
+            rHolderStatus.lastPayoutIndexCalculated == currentPayoutIndex // user has already been paid out up to current payout index
         ) return 0;
 
         if (
             // User has a previously calculated value to return
-            holderStatus.isCalculated &&
-            holderStatus.lastPayoutIndexCalculated == currentPayoutIndex - 1
+            rHolderStatus.isCalculated &&
+            rHolderStatus.lastPayoutIndexCalculated == currentPayoutIndex - 1
         ) {
-            return holderStatus.calculatedPayout;
+            return rHolderStatus.calculatedPayout;
         }
 
         uint256 payoutAmount;
-        uint8 payRangeStart = holderStatus.isFrozen
-            ? holderStatus.frozenIndex - 1
+        uint8 payRangeStart = rHolderStatus.isFrozen
+            ? rHolderStatus.frozenIndex - 1
             : currentPayoutIndex - 1;
-        uint8 payRangeEnd = holderStatus.isCalculated
-            ? holderStatus.lastPayoutIndexCalculated + 1
-            : holderStatus.lastPayoutIndexCalculated;
+        uint8 payRangeEnd = rHolderStatus.isCalculated
+            ? rHolderStatus.lastPayoutIndexCalculated + 1
+            : rHolderStatus.lastPayoutIndexCalculated;
 
-        uint8 balanceHistoryIndex = holderStatus.mostRecentEntry;
+        uint8 balanceHistoryIndex = rHolderStatus.mostRecentEntry;
+        TokenBalanceChange memory curEntry = $._balanceHistory[holder][
+            balanceHistoryIndex
+        ];
         for (uint256 i = payRangeStart; i >= payRangeEnd; --i) {
             // iterates through the payout mapping from payRangeStart down to the payRangeEnd
             while (
                 // ensures the current balance history entry is the correct one and is valid
                 balanceHistoryIndex > 0 &&
-                (!$._balanceHistory[holder][balanceHistoryIndex].isValid ||
-                    balanceHistoryIndex > i)
+                (!curEntry.isValid || balanceHistoryIndex > i)
             ) {
-                --balanceHistoryIndex;
+                curEntry = $._balanceHistory[holder][--balanceHistoryIndex];
             }
             payoutStruct memory pInfo = $._payouts[i];
             payoutAmount +=
-                ($._balanceHistory[holder][balanceHistoryIndex].tokenBalance *
-                    pInfo.amount) /
+                (curEntry.tokenBalance * pInfo.amount) /
                 pInfo.totalSupply;
-            if (
-                balanceHistoryIndex == i &&
-                balanceHistoryIndex != holderStatus.mostRecentEntry
-            ) {
-                // Deletes old unneeded history entries
-                delete $._balanceHistory[holder][balanceHistoryIndex];
-                --holderStatus.numEntries;
-            }
             if (i == 0) break; // to prevent potential overflow
         }
-        holderStatus.calculatedPayout += payoutAmount;
 
         //update values
+        HolderStatus storage holderStatus = $._holderStatus[holder];
+
+        holderStatus.calculatedPayout += payoutAmount;
         holderStatus.isCalculated = true;
         holderStatus.lastPayoutIndexCalculated = payRangeStart;
         return holderStatus.calculatedPayout;
-    }
-
-    /**
-     * @notice Internal function that is used to delete user data.
-     * @param $ value for HolderManagementStorage.
-     * @param holder The address of the holder to be removed.
-     */
-    function deleteUserData(
-        HolderManagementStorage storage $,
-        address holder
-    ) internal {
-        // most recent entry should be the only entry left when this is called
-        delete $._balanceHistory[holder][
-            $._holderStatus[holder].mostRecentEntry
-        ];
-        delete $._holderStatus[holder];
     }
 
     /**
@@ -415,8 +434,8 @@ abstract contract RemoraRWAHolderManagement is
             // add/update holder
             uint256 toBalance = balanceOf(to);
             HolderStatus storage tHolderStatus = $._holderStatus[to];
-            if (tHolderStatus.numEntries == 0) {
-                // if holder is a new holder
+            if (!tHolderStatus.isHolder) {
+                tHolderStatus.isHolder = true;
                 tHolderStatus.lastPayoutIndexCalculated = payoutIndex;
             }
             TokenBalanceChange storage currentIndexEntry = $._balanceHistory[
@@ -427,7 +446,6 @@ abstract contract RemoraRWAHolderManagement is
                 currentIndexEntry.tokenBalance = toBalance;
             } else {
                 // else update status data and create new entry
-                ++tHolderStatus.numEntries;
                 tHolderStatus.mostRecentEntry = payoutIndex;
                 $._balanceHistory[to][payoutIndex] = TokenBalanceChange({
                     isValid: true,
@@ -439,17 +457,19 @@ abstract contract RemoraRWAHolderManagement is
         if (from != address(0)) {
             // remove/update holder
             uint256 fromBalance = balanceOf(from);
+            HolderStatus storage fromHolderStatus = $._holderStatus[from];
             if (fromBalance == 0 && payoutBalance(from) == 0) {
-                deleteUserData($, from);
+                //saving old value in case sent tokens with adminTransferFrom without checkTC
+                bool signed = fromHolderStatus.signedTC;
+                delete $._holderStatus[from];
+                fromHolderStatus.signedTC = signed;
                 return;
             }
-            HolderStatus storage fromHolderStatus = $._holderStatus[from];
             if (fromHolderStatus.mostRecentEntry == payoutIndex) {
                 // user already has an entry at the current payout index
                 $._balanceHistory[from][payoutIndex].tokenBalance = fromBalance;
             } else {
                 // else, create new entry
-                ++fromHolderStatus.numEntries;
                 fromHolderStatus.mostRecentEntry = payoutIndex;
                 $._balanceHistory[from][payoutIndex] = TokenBalanceChange({
                     isValid: true,

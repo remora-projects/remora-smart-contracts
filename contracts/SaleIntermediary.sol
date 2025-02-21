@@ -11,7 +11,8 @@ interface IRwaToken {
     function adminTransferFrom(
         address,
         address,
-        uint256
+        uint256,
+        bool
     ) external returns (bool);
 }
 
@@ -149,7 +150,8 @@ contract RemoraSaleIntermediary is AccessManaged, ReentrancyGuard {
         IRwaToken(data.assetSold).adminTransferFrom(
             seller,
             buyer,
-            data.assetSoldAmount
+            data.assetSoldAmount,
+            true
         );
     }
 

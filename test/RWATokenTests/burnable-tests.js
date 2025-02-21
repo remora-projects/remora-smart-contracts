@@ -8,7 +8,7 @@ const { expect } = require("chai");
 
 describe("RemoraRWAToken", function () {
   async function burnableFixture() {
-    return await deployContractsAndSetVariables(10, 0, 0);
+    return await deployContractsAndSetVariables(10, 0, 0, true);
   }
 
   describe("Burnable Tests", function () {

@@ -237,7 +237,7 @@ contract RemoraRWATokenV2 is
      * @param value The amount of tokens to burn.
      */
     function burn(uint256 value) public whenBurnable whenNotPaused {
-        if (isHolderFrozen(_msgSender())) revert UserIsFrozen();
+        if (isHolderFrozen(_msgSender())) revert UserIsFrozen(_msgSender());
         _burn(_msgSender(), value);
     }
 
@@ -299,7 +299,7 @@ contract RemoraRWATokenV2 is
      */
     function _exchangeAllowed(address from, address to) private view {
         _allowlist.exchangeAllowed(from, to);
-        if (isHolderFrozen(from)) revert UserIsFrozen();
-        if (isHolderFrozen(to)) revert UserIsFrozen();
+        if (isHolderFrozen(from)) revert UserIsFrozen(from);
+        if (isHolderFrozen(to)) revert UserIsFrozen(to);
     }
 }

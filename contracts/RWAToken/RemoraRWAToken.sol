@@ -127,13 +127,25 @@ contract RemoraRWAToken is
      * @param from The address from which tokens are being transferred.
      * @param to The recipient address.
      * @param value The number of tokens to transfer.
+     * @param checkTC Whether or not to check if the user tokens are being sent to have signed the T&C
      * @return A boolean indicating whether the transfer succeeded.
      */
     function adminTransferFrom(
         address from,
         address to,
-        uint256 value
+        uint256 value,
+        bool checkTC
     ) external restricted returns (bool) {
+        HolderManagementStorage storage $ = _getHolderManagementStorage();
+        HolderStatus memory hStatus = $._holderStatus[from];
+        if (checkTC && !hasSignedTC(to)) revert TermsAndConditionsNotSigned(to);
+        if (
+            hStatus.isFrozen &&
+            block.timestamp > hStatus.frozenTimestamp + 30 days
+        ) {
+            super._transfer(from, to, value);
+            return true;
+        }
         return super.transferFrom(from, to, value);
     }
 
@@ -230,8 +242,9 @@ contract RemoraRWAToken is
      * @param value The amount of tokens to burn.
      */
     function burn(uint256 value) public whenBurnable whenNotPaused {
-        if (isHolderFrozen(_msgSender())) revert UserIsFrozen();
-        _burn(_msgSender(), value);
+        address sender = _msgSender();
+        if (isHolderFrozen(sender)) revert UserIsFrozen(sender);
+        _burn(sender, value);
     }
 
     /**
@@ -283,7 +296,8 @@ contract RemoraRWAToken is
      */
     function _exchangeAllowed(address from, address to) private view {
         _allowlist.exchangeAllowed(from, to);
-        if (isHolderFrozen(from)) revert UserIsFrozen();
-        if (isHolderFrozen(to)) revert UserIsFrozen();
+        if (isHolderFrozen(from)) revert UserIsFrozen(from);
+        if (isHolderFrozen(to)) revert UserIsFrozen(to);
+        if (!hasSignedTC(to)) revert TermsAndConditionsNotSigned(to);
     }
 }

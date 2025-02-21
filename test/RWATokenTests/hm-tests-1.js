@@ -13,7 +13,7 @@ const { expect } = require("chai");
 
 describe("RemoraRWAToken Holder Management Tests 1", function () {
   async function holderManagementTestsSetUp() {
-    return await deployContractsAndSetVariables(10, 0, 0);
+    return await deployContractsAndSetVariables(10, 0, 0, true);
   }
 
   describe("Holder Management Tests, distributions", function () {

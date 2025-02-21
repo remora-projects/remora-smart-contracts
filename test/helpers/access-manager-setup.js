@@ -34,6 +34,7 @@ async function setUpAccessManagerToken(
     getSelector("freezeHolder(address)"),
     getSelector("unFreezeHolder(address)"),
     getSelector("withdraw(bool,uint256)"),
+    getSelector("signTC(address)"),
   ];
 
   const custodian_allowlist_selectors = [
@@ -45,7 +46,7 @@ async function setUpAccessManagerToken(
   const facilitator_selectors = [
     getSelector("distributePayout(uint256)"),
     getSelector("adminClaimPayout(address,bool,bool,uint256)"),
-    getSelector("adminTransferFrom(address,address,uint256)"),
+    getSelector("adminTransferFrom(address,address,uint256,bool)"),
     getSelector("burnFrom(address,uint256)"),
   ];
 
@@ -95,7 +96,7 @@ async function setUpAccessManagerIntermediary( // only call after setting up tok
   facilitator
 ) {
   const intermediary_selectors = [
-    getSelector("adminTransferFrom(address,address,uint256)"),
+    getSelector("adminTransferFrom(address,address,uint256,bool)"),
     getSelector("adminClaimPayout(address,bool,bool,uint256)"),
   ];
 

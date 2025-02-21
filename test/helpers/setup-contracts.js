@@ -1,10 +1,12 @@
 const { ethers, upgrades } = require("hardhat");
+const { expect } = require("chai");
 const { setUpAccessManagerToken } = require("./access-manager-setup");
 
 async function deployContractsAndSetVariables(
   tokenSupply,
   transferFee,
-  rentFee
+  rentFee,
+  allSignTC
 ) {
   const [
     owner,
@@ -27,6 +29,18 @@ async function deployContractsAndSetVariables(
       transferFee,
       rentFee
     );
+
+  if (allSignTC)
+    await signTermsAndConditions(remoratoken, custodian, [
+      owner,
+      investor1,
+      investor2,
+      investor3,
+      investor4,
+      custodian,
+      facilitator,
+      state_changer,
+    ]);
 
   return {
     owner,
@@ -114,6 +128,15 @@ async function setUpAndDeployContracts(
   );
 
   return { remoratoken, allowlist, ausd, accessmanager };
+}
+
+async function signTermsAndConditions(remoratoken, custodian, accounts) {
+  for (let i = 0; i < accounts.length; ++i) {
+    await remoratoken.connect(custodian).signTC(accounts[i].address);
+    const tx = await remoratoken.hasSignedTC(accounts[i].address);
+    //console.log("value for ", accounts[i].address, " is ", tx);
+    expect(await remoratoken.hasSignedTC(accounts[i].address)).to.be.true;
+  }
 }
 
 module.exports = {

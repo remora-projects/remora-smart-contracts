@@ -9,7 +9,7 @@ const { AbiCoder } = require("ethers");
 
 describe("Access Manager Tests", function () {
   async function setUpAccessManagerTests() {
-    return await deployContractsAndSetVariables(10, 0, 0);
+    return await deployContractsAndSetVariables(10, 0, 0, true);
   }
 
   it("Should successfully upgrade Access Manager", async function () {
