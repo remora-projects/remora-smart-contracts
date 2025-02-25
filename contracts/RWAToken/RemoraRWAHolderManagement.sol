@@ -38,7 +38,7 @@ abstract contract RemoraRWAHolderManagement is
         uint8 mostRecentEntry;
         /// @dev The value of the most recently calculated payout.
         uint256 calculatedPayout;
-        /// @dev The timestamp of when the user was frozen.
+        /// @dev The timestamp of when the user was frozen. Used for 30 day calculation in adminTransferFrom in RemoraRWAToken.sol
         uint256 frozenTimestamp;
     }
 
