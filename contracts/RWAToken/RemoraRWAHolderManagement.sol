@@ -40,6 +40,10 @@ abstract contract RemoraRWAHolderManagement is
         uint256 calculatedPayout;
         /// @dev The timestamp of when the user was frozen. Used for 30 day calculation in adminTransferFrom in RemoraRWAToken.sol
         uint256 frozenTimestamp;
+        /// @dev The address this holder's payout should be forwarded to.
+        address forwardPayoutTo;
+        /// @dev The addresses that are forwarding payouts to holder
+        address[] forwardedPayouts;
     }
 
     /// @dev Contains info at the time of payout distribution
@@ -174,6 +178,39 @@ abstract contract RemoraRWAHolderManagement is
         $._wallet = _wallet;
         $._payoutFee = _payoutFee;
         $._currentPayoutIndex = 0;
+    }
+
+    function setPayoutForwardAddress(
+        address holder,
+        address forwardingAddress
+    ) external restricted {
+        //should I add an event for this?
+        HolderManagementStorage storage $ = _getHolderManagementStorage();
+        $._holderStatus[holder].forwardPayoutTo = forwardingAddress;
+        $._holderStatus[forwardingAddress].forwardedPayouts.push(holder);
+    }
+
+    function removePayoutForwardAddress(address holder) external restricted {
+        HolderManagementStorage storage $ = _getHolderManagementStorage();
+
+        HolderStatus storage holderStatus = $._holderStatus[holder];
+        address forwardedAddress = holderStatus.forwardPayoutTo;
+        holderStatus.forwardPayoutTo = address(0);
+
+        HolderStatus storage forwardedHolder = $._holderStatus[
+            forwardedAddress
+        ];
+        uint256 len = forwardedHolder.forwardedPayouts.length;
+        if (len > 1) {
+            for (uint256 i = 0; i < len; ++i) {
+                if (forwardedHolder.forwardedPayouts[i] == holder) {
+                    forwardedHolder.forwardedPayouts[i] = forwardedHolder
+                        .forwardedPayouts[len - 1];
+                    break;
+                }
+            }
+        }
+        forwardedHolder.forwardedPayouts.pop();
     }
 
     /**
@@ -384,6 +421,11 @@ abstract contract RemoraRWAHolderManagement is
             rHolderStatus.lastPayoutIndexCalculated == currentPayoutIndex - 1
         ) return rHolderStatus.calculatedPayout;
 
+        //runs payoutBalance on the addresses that are forwarding payouts to this address
+        for (uint256 i = 0; i < rHolderStatus.forwardedPayouts.length; ++i) {
+            payoutBalance(rHolderStatus.forwardedPayouts[i]);
+        }
+
         uint256 payoutAmount;
         uint8 payRangeStart = rHolderStatus.isFrozen
             ? rHolderStatus.frozenIndex - 1
@@ -413,10 +455,16 @@ abstract contract RemoraRWAHolderManagement is
 
         //update values
         HolderStatus storage holderStatus = $._holderStatus[holder];
-
-        holderStatus.calculatedPayout += payoutAmount;
         holderStatus.isCalculated = true;
         holderStatus.lastPayoutIndexCalculated = payRangeStart;
+
+        //add current payout to calculated payout, or forward it to specified address
+        address payoutForwardAddr = holderStatus.forwardPayoutTo;
+        if (payoutForwardAddr == address(0)) {
+            holderStatus.calculatedPayout += payoutAmount;
+        } else {
+            $._holderStatus[payoutForwardAddr].calculatedPayout += payoutAmount;
+        }
         return holderStatus.calculatedPayout;
     }
 

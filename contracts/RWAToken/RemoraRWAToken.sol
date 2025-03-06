@@ -31,6 +31,8 @@ contract RemoraRWAToken is
 {
     /// @dev Reference to the external allowlist contract for managing user permissions.
     IAllowlist private _allowlist;
+    // In order to add future smart contract interface, for oracle + price calulation purposes
+    uint256 __gap;
     /// @dev The flat fee for token transfers
     uint256 transferFee;
     /// @dev The price per token paid out when burned
