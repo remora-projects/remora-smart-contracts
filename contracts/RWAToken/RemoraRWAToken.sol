@@ -2,6 +2,7 @@
 // Compatible with OpenZeppelin Contracts ^5.0.0
 pragma solidity ^0.8.22;
 
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {RemoraRWABurnable} from "./RemoraRWABurnable.sol";
 import {RemoraRWAHolderManagement} from "./RemoraRWAHolderManagement.sol";
 import {ERC20PermitUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PermitUpgradeable.sol";
@@ -30,14 +31,24 @@ contract RemoraRWAToken is
 {
     /// @dev Reference to the external allowlist contract for managing user permissions.
     IAllowlist private _allowlist;
-    /// @dev The flat fee for token transfers,
+    /// @dev The flat fee for token transfers
     uint256 transferFee;
+    /// @dev The price per token paid out when burned
+    uint256 pricePerBurnedToken;
+    /// @dev Mapping that contains addresses that are able to send and recieve tokens without a fee
+    mapping(address => bool) private _whitelist;
 
     /**
      * @notice Event emitted when flat fee has changed.
      * @param newFee Value of the new fee.
      */
     event TransferFeeChanged(uint256 newFee);
+
+    /**
+     * @notice Event emitted when a value for the burned token is set
+     * @param price The price that will be paid out per burned token
+     */
+    event NewPricePerBurnedToken(uint256 price);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -83,8 +94,25 @@ contract RemoraRWAToken is
 
         _allowlist = IAllowlist(allowList);
         transferFee = initialTransferFee;
+        pricePerBurnedToken = 0; //initially 0, as not burnable
 
         _mint(tokenOwner, _initialSupply * 10 ** decimals());
+    }
+
+    function addToWhitelist(address addrToAdd) external restricted {
+        if (addrToAdd == address(0)) revert InvalidAddress();
+        if (!_whitelist[addrToAdd]) {
+            // do I even need this check?
+            _whitelist[addrToAdd] = true;
+        }
+    }
+
+    function removeFromWhitelist(address addrToRemove) external restricted {
+        if (addrToRemove == address(0)) revert InvalidAddress();
+        if (_whitelist[addrToRemove]) {
+            // Do I need this check above?
+            _whitelist[addrToRemove] = false;
+        }
     }
 
     /**
@@ -92,7 +120,7 @@ contract RemoraRWAToken is
      * @param newFee New transfer fee value, in USD, 6 decimals.
      */
     function setTransferFee(uint256 newFee) external restricted {
-        require(newFee >= 0);
+        require(newFee >= 0); //can I just remove this check since it's a uint being passed?
         transferFee = newFee;
         emit TransferFeeChanged(newFee);
     }
@@ -182,10 +210,19 @@ contract RemoraRWAToken is
     }
 
     /**
-     * @notice Enables the burning of tokens. Restricted to authorized accounts.
+     * @notice Enables the burning of tokens and sets value for how much is paid out per burned token. Restricted to authorized accounts.
+     * @param changePrice Whether or not the burnPrice will be changing
+     * @param burnPrice The price that will be paid out per burned token.
      */
-    function enableBurning() external restricted {
+    function enableBurning(
+        bool changePrice,
+        uint256 burnPrice
+    ) external restricted {
         _enableBurning();
+        if (changePrice) {
+            pricePerBurnedToken = burnPrice;
+            emit NewPricePerBurnedToken(burnPrice);
+        }
     }
 
     /**
@@ -209,7 +246,7 @@ contract RemoraRWAToken is
         address sender = _msgSender();
         _exchangeAllowed(sender, to);
         result = super.transfer(to, value);
-        if (transferFee != 0) {
+        if (transferFee != 0 && !_whitelist[sender] && !_whitelist[to]) {
             HolderManagementStorage storage $ = _getHolderManagementStorage();
             $._stablecoin.transferFrom(sender, $._wallet, transferFee);
         }
@@ -231,20 +268,37 @@ contract RemoraRWAToken is
         address sender = _msgSender();
         _exchangeAllowed(from, to);
         result = super.transferFrom(from, to, value);
-        if (transferFee != 0) {
+        if (
+            transferFee != 0 &&
+            !_whitelist[sender] &&
+            !_whitelist[from] &&
+            !_whitelist[to]
+        ) {
             HolderManagementStorage storage $ = _getHolderManagementStorage();
             $._stablecoin.transferFrom(sender, $._wallet, transferFee);
         }
     }
 
     /**
-     * @notice Burns a number of tokens from the sender.
-     * @param value The amount of tokens to burn.
+     * @notice Burns a number of tokens from the sender, and pays out in stablecoin.
+     * @param amount The amount of tokens to burn.
      */
-    function burn(uint256 value) public whenBurnable whenNotPaused {
+    function burn(uint256 amount) public whenBurnable whenNotPaused {
         address sender = _msgSender();
         if (isHolderFrozen(sender)) revert UserIsFrozen(sender);
-        _burn(sender, value);
+
+        uint256 burnPayout = amount * pricePerBurnedToken;
+        _burn(sender, amount);
+
+        HolderManagementStorage storage $ = _getHolderManagementStorage();
+        IERC20 stablecoin = $._stablecoin;
+        uint256 stablecoinBalance = stablecoin.balanceOf(address(this));
+
+        if (burnPayout > stablecoinBalance) {
+            revert InsufficentStablecoinBalance();
+        }
+
+        stablecoin.transfer(sender, burnPayout);
     }
 
     /**
@@ -253,6 +307,7 @@ contract RemoraRWAToken is
      * @param value The number of tokens to burn.
      */
     function burnFrom(address account, uint256 value) public restricted {
+        //should I add whenBurnable?
         _burnFrom(account, value);
     }
 
@@ -298,6 +353,7 @@ contract RemoraRWAToken is
         _allowlist.exchangeAllowed(from, to);
         if (isHolderFrozen(from)) revert UserIsFrozen(from);
         if (isHolderFrozen(to)) revert UserIsFrozen(to);
-        if (!hasSignedTC(to)) revert TermsAndConditionsNotSigned(to);
+        if (!hasSignedTC(to) && !_whitelist[to])
+            revert TermsAndConditionsNotSigned(to);
     }
 }

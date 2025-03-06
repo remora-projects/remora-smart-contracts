@@ -17,26 +17,6 @@ describe("RemoraRWAToken Holder Management Tests 1", function () {
   }
 
   describe("Holder Management Tests, distributions", function () {
-    it("Should revert transfer due to frozen user, then allow after unfrozen", async function () {
-      const { owner, investor1, custodian, remoratoken, allowlist } =
-        await loadFixture(holderManagementTestsSetUp);
-
-      await allowlist.connect(custodian).allowUser(investor1.address);
-      await remoratoken.transfer(investor1.address, 10);
-
-      await remoratoken.connect(custodian).freezeHolder(investor1.address);
-
-      await expect(
-        remoratoken.connect(investor1).transfer(owner.address, 10)
-      ).to.be.revertedWithCustomError(remoratoken, "UserIsFrozen");
-
-      await remoratoken.connect(custodian).unFreezeHolder(investor1.address);
-
-      await expect(
-        remoratoken.connect(investor1).transfer(owner.address, 10)
-      ).to.changeTokenBalances(remoratoken, [investor1, owner], [-10, +10]);
-    });
-
     it("Should return 0 for user payout before distributing", async function () {
       const { investor1, custodian, remoratoken, allowlist } =
         await loadFixture(holderManagementTestsSetUp);

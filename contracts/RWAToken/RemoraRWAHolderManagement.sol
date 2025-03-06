@@ -291,7 +291,10 @@ abstract contract RemoraRWAHolderManagement is
         HolderStatus storage holderStatus = $._holderStatus[holder];
         if (balanceOf(holder) == 0) {
             // if user is not a holder after claiming payout, delete their data
-            bool signed = holderStatus.signedTC;
+            //unless they are frozen
+            bool signed = (holderStatus.isFrozen)
+                ? false
+                : holderStatus.signedTC;
             delete $._holderStatus[holder];
             holderStatus.signedTC = signed;
         } else {
@@ -379,9 +382,7 @@ abstract contract RemoraRWAHolderManagement is
             // User has a previously calculated value to return
             rHolderStatus.isCalculated &&
             rHolderStatus.lastPayoutIndexCalculated == currentPayoutIndex - 1
-        ) {
-            return rHolderStatus.calculatedPayout;
-        }
+        ) return rHolderStatus.calculatedPayout;
 
         uint256 payoutAmount;
         uint8 payRangeStart = rHolderStatus.isFrozen
@@ -401,9 +402,8 @@ abstract contract RemoraRWAHolderManagement is
                 // ensures the current balance history entry is the correct one and is valid
                 balanceHistoryIndex > 0 &&
                 (!curEntry.isValid || balanceHistoryIndex > i)
-            ) {
-                curEntry = $._balanceHistory[holder][--balanceHistoryIndex];
-            }
+            ) curEntry = $._balanceHistory[holder][--balanceHistoryIndex];
+
             payoutStruct memory pInfo = $._payouts[i];
             payoutAmount +=
                 (curEntry.tokenBalance * pInfo.amount) /
@@ -460,7 +460,10 @@ abstract contract RemoraRWAHolderManagement is
             HolderStatus storage fromHolderStatus = $._holderStatus[from];
             if (fromBalance == 0 && payoutBalance(from) == 0) {
                 //saving old value in case sent tokens with adminTransferFrom without checkTC
-                bool signed = fromHolderStatus.signedTC;
+                //unless they are frozen
+                bool signed = (fromHolderStatus.isFrozen)
+                    ? false
+                    : fromHolderStatus.signedTC;
                 delete $._holderStatus[from];
                 fromHolderStatus.signedTC = signed;
                 return;

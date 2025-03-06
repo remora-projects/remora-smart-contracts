@@ -133,9 +133,9 @@ async function setUpAndDeployContracts(
 async function signTermsAndConditions(remoratoken, custodian, accounts) {
   for (let i = 0; i < accounts.length; ++i) {
     await remoratoken.connect(custodian).signTC(accounts[i].address);
-    const tx = await remoratoken.hasSignedTC(accounts[i].address);
+    const tx = remoratoken.hasSignedTC(accounts[i].address);
     //console.log("value for ", accounts[i].address, " is ", tx);
-    expect(await remoratoken.hasSignedTC(accounts[i].address)).to.be.true;
+    expect(await tx).to.be.true;
   }
 }
 

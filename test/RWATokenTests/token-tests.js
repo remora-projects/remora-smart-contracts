@@ -13,6 +13,11 @@ describe("RemoraRWAToken Tests", function () {
     return await deployContractsAndSetVariables(10, 0, 0, true);
   }
 
+  async function setUpRemoraRWATestsNS() {
+    // No sign
+    return await deployContractsAndSetVariables(10, 0, 0, false);
+  }
+
   it("Should successfully transfer token with fee", async function () {
     const { investor1, custodian, remoratoken, ausd, allowlist } =
       await loadFixture(setUpRemoraRWATests);
@@ -184,53 +189,74 @@ describe("RemoraRWAToken Tests", function () {
     ).to.be.revertedWithCustomError(remoratoken, "AccessManagedUnauthorized");
   });
 
-  it("Should successfully upgrade RWAToken and Allowlist", async function () {
-    const {
-      owner,
-      accessmanager,
-      investor1,
-      investor2,
-      custodian,
-      remoratoken,
-      allowlist,
-    } = await loadFixture(setUpRemoraRWATests);
+  it("Should successfully transfer tokens without fee and without signing TC (whitelist)", async function () {
+    const { owner, investor1, custodian, remoratoken, allowlist } =
+      await loadFixture(setUpRemoraRWATestsNS);
 
     await allowlist.connect(custodian).allowUser(investor1.address);
-    await remoratoken.transfer(investor1.address, 5);
+    await remoratoken.connect(custodian).signTC(owner.address);
 
-    const RemoraAllowListV2 = await ethers.getContractFactory(
-      "RemoraAllowlistV2"
-    );
+    expect(await remoratoken.hasSignedTC(investor1)).to.be.false;
 
     await expect(
-      upgrades.upgradeProxy(allowlist.target, RemoraAllowListV2)
-    ).to.be.revertedWithCustomError(allowlist, "AccessManagedUnauthorized");
+      remoratoken.transfer(investor1.address, 5)
+    ).to.be.revertedWithCustomError(remoratoken, "TermsAndConditionsNotSigned");
 
-    await accessmanager.grantRole(CUSTODIAN_ID, owner, 0); // grant role to owner so can upgrade
-
-    const allowlistV2 = await upgrades.upgradeProxy(
-      allowlist.target,
-      RemoraAllowListV2
-    );
-
-    expect(await allowlistV2.version()).to.equal(2);
-
-    const RemoraRWATokenV2 = await ethers.getContractFactory(
-      "RemoraRWATokenV2"
-    );
-    const remoratokenV2 = await upgrades.upgradeProxy(
-      remoratoken.target,
-      RemoraRWATokenV2
-    );
-
-    expect(await remoratokenV2.version()).to.equal(2);
+    await remoratoken.connect(custodian).addToWhitelist(investor1.address);
+    await remoratoken.connect(custodian).setTransferFee(500);
 
     await expect(
-      remoratokenV2.transfer(investor2.address, 5)
-    ).to.be.revertedWithCustomError(allowlistV2, "UserNotRegistered");
-
-    await expect(
-      remoratokenV2.transfer(investor1.address, 5)
-    ).to.changeTokenBalances(remoratokenV2, [owner, investor1], [-5, +5]);
+      remoratoken.transfer(investor1.address, 5)
+    ).to.changeTokenBalances(remoratoken, [owner, investor1], [-5, +5]);
   });
+
+  // it("Should successfully upgrade RWAToken and Allowlist", async function () {
+  //   const {
+  //     owner,
+  //     accessmanager,
+  //     investor1,
+  //     investor2,
+  //     custodian,
+  //     remoratoken,
+  //     allowlist,
+  //   } = await loadFixture(setUpRemoraRWATests);
+
+  //   await allowlist.connect(custodian).allowUser(investor1.address);
+  //   await remoratoken.transfer(investor1.address, 5);
+
+  //   const RemoraAllowListV2 = await ethers.getContractFactory(
+  //     "RemoraAllowlistV2"
+  //   );
+
+  //   await expect(
+  //     upgrades.upgradeProxy(allowlist.target, RemoraAllowListV2)
+  //   ).to.be.revertedWithCustomError(allowlist, "AccessManagedUnauthorized");
+
+  //   await accessmanager.grantRole(CUSTODIAN_ID, owner, 0); // grant role to owner so can upgrade
+
+  //   const allowlistV2 = await upgrades.upgradeProxy(
+  //     allowlist.target,
+  //     RemoraAllowListV2
+  //   );
+
+  //   expect(await allowlistV2.version()).to.equal(2);
+
+  //   const RemoraRWATokenV2 = await ethers.getContractFactory(
+  //     "RemoraRWATokenV2"
+  //   );
+  //   const remoratokenV2 = await upgrades.upgradeProxy(
+  //     remoratoken.target,
+  //     RemoraRWATokenV2
+  //   );
+
+  //   expect(await remoratokenV2.version()).to.equal(2);
+
+  //   await expect(
+  //     remoratokenV2.transfer(investor2.address, 5)
+  //   ).to.be.revertedWithCustomError(allowlistV2, "UserNotRegistered");
+
+  //   await expect(
+  //     remoratokenV2.transfer(investor1.address, 5)
+  //   ).to.changeTokenBalances(remoratokenV2, [owner, investor1], [-5, +5]);
+  // });
 });

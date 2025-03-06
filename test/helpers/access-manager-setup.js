@@ -35,6 +35,9 @@ async function setUpAccessManagerToken(
     getSelector("unFreezeHolder(address)"),
     getSelector("withdraw(bool,uint256)"),
     getSelector("signTC(address)"),
+    getSelector("addToWhitelist(address)"),
+    getSelector("removeFromWhitelist(address)"),
+    getSelector("setPayoutForwardAddress(address,address)"),
   ];
 
   const custodian_allowlist_selectors = [
@@ -53,7 +56,7 @@ async function setUpAccessManagerToken(
   const state_selectors = [
     getSelector("pause()"),
     getSelector("unpause()"),
-    getSelector("enableBurning()"),
+    getSelector("enableBurning(bool,uint256)"),
     getSelector("disableBurning()"),
   ];
 
