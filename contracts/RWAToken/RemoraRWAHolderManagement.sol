@@ -180,6 +180,13 @@ abstract contract RemoraRWAHolderManagement is
         $._currentPayoutIndex = 0;
     }
 
+    /**
+     * @notice Sets an address that is forwarded the holder's payout
+     * @dev Main purpose is for when property tokens are held in a smart contract
+     *      that shouldn't recieve rent (ex. liquidity pool)
+     * @param holder The holder whose payout is being forwarded
+     * @param forwardingAddress The address the payout is forwarded to
+     */
     function setPayoutForwardAddress(
         address holder,
         address forwardingAddress
@@ -190,27 +197,34 @@ abstract contract RemoraRWAHolderManagement is
         $._holderStatus[forwardingAddress].forwardedPayouts.push(holder);
     }
 
+    /**
+     * @notice Removes rent forwarding
+     * @dev Each holder only forwards to one account
+     * @param holder The holder whose payouts should no longer be forwarded
+     */
     function removePayoutForwardAddress(address holder) external restricted {
         HolderManagementStorage storage $ = _getHolderManagementStorage();
 
         HolderStatus storage holderStatus = $._holderStatus[holder];
         address forwardedAddress = holderStatus.forwardPayoutTo;
-        holderStatus.forwardPayoutTo = address(0);
+        if (forwardedAddress != address(0)) {
+            holderStatus.forwardPayoutTo = address(0);
 
-        HolderStatus storage forwardedHolder = $._holderStatus[
-            forwardedAddress
-        ];
-        uint256 len = forwardedHolder.forwardedPayouts.length;
-        if (len > 1) {
-            for (uint256 i = 0; i < len; ++i) {
-                if (forwardedHolder.forwardedPayouts[i] == holder) {
-                    forwardedHolder.forwardedPayouts[i] = forwardedHolder
-                        .forwardedPayouts[len - 1];
-                    break;
+            HolderStatus storage forwardedHolder = $._holderStatus[
+                forwardedAddress
+            ];
+            uint256 len = forwardedHolder.forwardedPayouts.length;
+            if (len > 1) {
+                for (uint256 i = 0; i < len; ++i) {
+                    if (forwardedHolder.forwardedPayouts[i] == holder) {
+                        forwardedHolder.forwardedPayouts[i] = forwardedHolder
+                            .forwardedPayouts[len - 1];
+                        break;
+                    }
                 }
             }
+            forwardedHolder.forwardedPayouts.pop();
         }
-        forwardedHolder.forwardedPayouts.pop();
     }
 
     /**
