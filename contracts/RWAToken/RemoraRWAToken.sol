@@ -101,6 +101,10 @@ contract RemoraRWAToken is
         _mint(tokenOwner, _initialSupply * 10 ** decimals());
     }
 
+    /**
+     * @notice Adds address to whitelist
+     * @param addrToAdd The address to add
+     */
     function addToWhitelist(address addrToAdd) external restricted {
         if (addrToAdd == address(0)) revert InvalidAddress();
         if (!_whitelist[addrToAdd]) {
@@ -109,6 +113,10 @@ contract RemoraRWAToken is
         }
     }
 
+    /**
+     * @notice Removes address from whitelist
+     * @param addrToRemove The address to remove
+     */
     function removeFromWhitelist(address addrToRemove) external restricted {
         if (addrToRemove == address(0)) revert InvalidAddress();
         if (_whitelist[addrToRemove]) {
