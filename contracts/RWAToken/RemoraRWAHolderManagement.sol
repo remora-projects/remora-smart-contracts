@@ -2,11 +2,12 @@
 pragma solidity ^0.8.22;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 import {AccessManagedUpgradeable} from "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import {ERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
-import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import {ReentrancyGuardTransientUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardTransientUpgradeable.sol";
 
 /// @custom:security-contact support@remora.us
 /**
@@ -17,7 +18,7 @@ import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/ut
  */
 abstract contract RemoraRWAHolderManagement is
     Initializable,
-    ReentrancyGuardUpgradeable,
+    ReentrancyGuardTransientUpgradeable,
     ContextUpgradeable,
     AccessManagedUpgradeable,
     ERC20Upgradeable
@@ -36,16 +37,16 @@ abstract contract RemoraRWAHolderManagement is
         uint8 lastPayoutIndexCalculated;
         /// @dev The index of the most recent entry in balance history.
         uint8 mostRecentEntry;
+        /// @dev The timestamp of when the user was frozen. Used for 30 day calculation in adminTransferFrom in RemoraRWAToken.sol
+        uint32 frozenTimestamp;
         /// @dev The value of the most recently calculated payout.
         uint256 calculatedPayout;
-        /// @dev The timestamp of when the user was frozen. Used for 30 day calculation in adminTransferFrom in RemoraRWAToken.sol
-        uint256 frozenTimestamp;
     }
 
     /// @dev Contains info at the time of payout distribution
     struct payoutStruct {
-        uint256 amount;
-        uint256 totalSupply;
+        uint128 amount;
+        uint128 totalSupply;
     }
 
     /// @dev Contains holder's token balance and indicator of if entry is valid or not.
@@ -61,7 +62,7 @@ abstract contract RemoraRWAHolderManagement is
         /// @dev The IERC20 stablecoin used for facilitating payouts.
         IERC20 _stablecoin;
         /// @dev The fixed fee deducted from payouts, in USD, represented with 6 decimals.
-        uint256 _payoutFee;
+        uint32 _payoutFee;
         /// @dev The current index that is yet to be paid out.
         uint8 _currentPayoutIndex;
         /// @dev mapping to a struct containing payout amounts and tokenSupply that the payout indices correlate to.
@@ -80,7 +81,7 @@ abstract contract RemoraRWAHolderManagement is
      * @notice Event emitted when the payout fee is updated.
      * @param newFee New value for the fixed payout fee.
      */
-    event PayoutFeeUpdated(uint256 newFee);
+    event PayoutFeeUpdated(uint32 newFee);
 
     /**
      * @notice Event emitted when the stablecoin for payouts is updated.
@@ -99,7 +100,7 @@ abstract contract RemoraRWAHolderManagement is
      * @notice Event emitted when payouts are distributed among token holders.
      * @param totalDistributed The total value of the payout distributed in USD stablecoin (6 decimals).
      */
-    event PayoutDistributed(uint256 totalDistributed);
+    event PayoutDistributed(uint128 totalDistributed);
 
     /**
      * @notice Event emitted when a holder is frozen.
@@ -146,10 +147,10 @@ abstract contract RemoraRWAHolderManagement is
         address _initialAuthority,
         address _stablecoin,
         address _wallet,
-        uint256 _payoutFee
+        uint32 _payoutFee
     ) internal onlyInitializing {
         __AccessManaged_init(_initialAuthority);
-        __ReentrancyGuard_init();
+        __ReentrancyGuardTransient_init();
         __RemoraHolderManagement_init_unchained(
             _stablecoin,
             _wallet,
@@ -167,7 +168,7 @@ abstract contract RemoraRWAHolderManagement is
     function __RemoraHolderManagement_init_unchained(
         address _stablecoin,
         address _wallet,
-        uint256 _payoutFee
+        uint32 _payoutFee
     ) internal onlyInitializing {
         HolderManagementStorage storage $ = _getHolderManagementStorage();
         $._stablecoin = IERC20(_stablecoin);
@@ -181,7 +182,7 @@ abstract contract RemoraRWAHolderManagement is
      * @dev Restricted to authorized accounts
      * @param newFee The new value for the fixed payout fee, in USD, 6 decimals.
      */
-    function setPayoutFee(uint256 newFee) external restricted {
+    function setPayoutFee(uint32 newFee) external restricted {
         HolderManagementStorage storage $ = _getHolderManagementStorage();
         $._payoutFee = newFee;
         emit PayoutFeeUpdated(newFee);
@@ -221,7 +222,9 @@ abstract contract RemoraRWAHolderManagement is
         if (!$._holderStatus[holder].isFrozen) {
             $._holderStatus[holder].isFrozen = true;
             $._holderStatus[holder].frozenIndex = $._currentPayoutIndex;
-            $._holderStatus[holder].frozenTimestamp = block.timestamp;
+            $._holderStatus[holder].frozenTimestamp = SafeCast.toUint32(
+                block.timestamp
+            );
             emit HolderFrozen(holder);
         }
     }
@@ -258,11 +261,11 @@ abstract contract RemoraRWAHolderManagement is
      * @dev Restricted to authorized accounts
      * @param payoutAmount The value to distribute among token holders. In stablecoin USD, 6 decimals.
      */
-    function distributePayout(uint256 payoutAmount) external restricted {
+    function distributePayout(uint128 payoutAmount) external restricted {
         HolderManagementStorage storage $ = _getHolderManagementStorage();
         $._payouts[$._currentPayoutIndex++] = payoutStruct({
             amount: payoutAmount,
-            totalSupply: totalSupply()
+            totalSupply: SafeCast.toUint128(totalSupply())
         });
         emit PayoutDistributed(payoutAmount);
     }

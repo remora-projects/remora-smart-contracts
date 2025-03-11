@@ -27,8 +27,8 @@ async function setUpAccessManagerToken(
     getSelector("mint(address,uint256)"),
     getSelector("upgradeToAndCall(address,bytes)"),
     getSelector("updateAllowList(address)"),
-    getSelector("setPayoutFee(uint256)"),
-    getSelector("setTransferFee(uint256)"),
+    getSelector("setPayoutFee(uint32)"),
+    getSelector("setTransferFee(uint32)"),
     getSelector("changeStablecoin(address)"),
     getSelector("changeWallet(address)"),
     getSelector("freezeHolder(address)"),
@@ -47,7 +47,7 @@ async function setUpAccessManagerToken(
   ];
 
   const facilitator_selectors = [
-    getSelector("distributePayout(uint256)"),
+    getSelector("distributePayout(uint128)"),
     getSelector("adminClaimPayout(address,bool,bool,uint256)"),
     getSelector("adminTransferFrom(address,address,uint256,bool)"),
     getSelector("burnFrom(address,uint256)"),
@@ -56,7 +56,7 @@ async function setUpAccessManagerToken(
   const state_selectors = [
     getSelector("pause()"),
     getSelector("unpause()"),
-    getSelector("enableBurning(bool,uint256)"),
+    getSelector("enableBurning(bool,uint64)"),
     getSelector("disableBurning()"),
   ];
 
@@ -110,13 +110,13 @@ async function setUpAccessManagerIntermediary( // only call after setting up tok
 
   const facilitator_selectors = [
     getSelector(
-      "swapTokens((address,address,address,uint256,address,uint256,bool,uint256,address))"
+      "swapTokens((address,address,address,address,address,uint128,uint128,uint128,bool))"
     ),
     getSelector(
-      "processRwaSale((address,address,address,uint256,address,uint256,bool,uint256,address))"
+      "processRwaSale((address,address,address,address,address,uint128,uint128,uint128,bool))"
     ),
     getSelector(
-      "processPayout((address,address,address,uint256,bool,uint256))"
+      "processPayout((address,address,address,uint128,uint128,bool))"
     ),
   ];
 

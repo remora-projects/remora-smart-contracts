@@ -2,10 +2,9 @@
 // Compatible with OpenZeppelin Contracts ^5.0.0
 pragma solidity ^0.8.22;
 
-import {RemoraRWABurnable} from "../RWAToken/RemoraRWABurnable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {RemoraRWABurnable} from "../RWAToken/RemoraRWABurnable.sol";
 import {RemoraRWAHolderManagement} from "../RWAToken/RemoraRWAHolderManagement.sol";
-import {ERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import {ERC20PermitUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PermitUpgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
@@ -32,14 +31,24 @@ contract RemoraRWATokenV2 is
 {
     /// @dev Reference to the external allowlist contract for managing user permissions.
     IAllowlist private _allowlist;
-    /// @dev The flat fee for token transfers,
-    uint256 transferFee;
+    /// @dev The flat fee for token transfers, 6 decimals USD
+    uint32 transferFee;
+    /// @dev The price per token paid out when burned, 6 decimals USD
+    uint64 pricePerBurnedToken;
+    /// @dev Mapping that contains addresses that are able to send and recieve tokens without a fee
+    mapping(address => bool) private _whitelist;
 
     /**
      * @notice Event emitted when flat fee has changed.
      * @param newFee Value of the new fee.
      */
     event TransferFeeChanged(uint256 newFee);
+
+    /**
+     * @notice Event emitted when a value for the burned token is set
+     * @param price The price that will be paid out per burned token
+     */
+    event NewPricePerBurnedToken(uint256 price);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -50,26 +59,26 @@ contract RemoraRWATokenV2 is
      * @notice Initializes the RWA token contract with specified parameters.
      * @param tokenOwner The initial owner of the tokens, must be on allowList.
      * @param initialAuthority The address granted initial access management authority.
-     * @param _name The name of the token.
-     * @param _symbol The symbol of the token.
-     * @param _initialSupply The initial supply of tokens, in whole units.
      * @param allowList The address of the allowlist contract.
      * @param stablecoin The address of the stablecoin used for payouts.
      * @param wallet The address of the wallet to withdraw contract funds.
      * @param initialPayoutFee The flat fee for payouts.
      * @param initialTransferFee The flat fee for token transfers.
+     * @param _name The name of the token.
+     * @param _symbol The symbol of the token.
+     * @param _initialSupply The initial supply of tokens, in whole units.
      */
     function initialize(
         address tokenOwner,
         address initialAuthority,
-        string memory _name,
-        string memory _symbol,
-        uint256 _initialSupply,
         address allowList,
         address stablecoin,
         address wallet,
-        uint256 initialPayoutFee,
-        uint256 initialTransferFee
+        uint32 initialPayoutFee,
+        uint32 initialTransferFee,
+        string memory _name,
+        string memory _symbol,
+        uint256 _initialSupply
     ) public initializer {
         __ERC20_init(_name, _symbol);
         __ERC20Permit_init(_name);
@@ -85,21 +94,45 @@ contract RemoraRWATokenV2 is
 
         _allowlist = IAllowlist(allowList);
         transferFee = initialTransferFee;
+        pricePerBurnedToken = 0; //initially 0, as not burnable
 
         _mint(tokenOwner, _initialSupply * 10 ** decimals());
     }
 
-    // added to test upgrading
-    function version() external pure returns (uint256) {
+    function version() public pure returns (uint) {
         return 2;
+    }
+
+    /**
+     * @notice Adds address to whitelist
+     * @param addrToAdd The address to add
+     */
+    function addToWhitelist(address addrToAdd) external restricted {
+        if (addrToAdd == address(0)) revert InvalidAddress();
+        if (!_whitelist[addrToAdd]) {
+            // do I even need this check?
+            _whitelist[addrToAdd] = true;
+        }
+    }
+
+    /**
+     * @notice Removes address from whitelist
+     * @param addrToRemove The address to remove
+     */
+    function removeFromWhitelist(address addrToRemove) external restricted {
+        if (addrToRemove == address(0)) revert InvalidAddress();
+        if (_whitelist[addrToRemove]) {
+            // Do I need this check above?
+            _whitelist[addrToRemove] = false;
+        }
     }
 
     /**
      * @notice Sets new transfer fee.
      * @param newFee New transfer fee value, in USD, 6 decimals.
      */
-    function changeTransferFee(uint256 newFee) external restricted {
-        require(newFee >= 0);
+    function setTransferFee(uint32 newFee) external restricted {
+        require(newFee >= 0); //can I just remove this check since it's a uint being passed?
         transferFee = newFee;
         emit TransferFeeChanged(newFee);
     }
@@ -134,13 +167,25 @@ contract RemoraRWATokenV2 is
      * @param from The address from which tokens are being transferred.
      * @param to The recipient address.
      * @param value The number of tokens to transfer.
+     * @param checkTC Whether or not to check if the user tokens are being sent to have signed the T&C
      * @return A boolean indicating whether the transfer succeeded.
      */
     function adminTransferFrom(
         address from,
         address to,
-        uint256 value
+        uint256 value,
+        bool checkTC
     ) external restricted returns (bool) {
+        if (checkTC && !hasSignedTC(to)) revert TermsAndConditionsNotSigned(to);
+
+        HolderManagementStorage storage $ = _getHolderManagementStorage();
+        if (
+            $._holderStatus[from].isFrozen &&
+            block.timestamp > $._holderStatus[from].frozenTimestamp + 30 days
+        ) {
+            super._transfer(from, to, value);
+            return true;
+        }
         return super.transferFrom(from, to, value);
     }
 
@@ -177,10 +222,19 @@ contract RemoraRWATokenV2 is
     }
 
     /**
-     * @notice Enables the burning of tokens. Restricted to authorized accounts.
+     * @notice Enables the burning of tokens and sets value for how much is paid out per burned token. Restricted to authorized accounts.
+     * @param changePrice Whether or not the burnPrice will be changing
+     * @param burnPrice The price that will be paid out per burned token.
      */
-    function enableBurning() external restricted {
+    function enableBurning(
+        bool changePrice,
+        uint64 burnPrice
+    ) external restricted {
         _enableBurning();
+        if (changePrice) {
+            pricePerBurnedToken = burnPrice;
+            emit NewPricePerBurnedToken(burnPrice);
+        }
     }
 
     /**
@@ -204,9 +258,10 @@ contract RemoraRWATokenV2 is
         address sender = _msgSender();
         _exchangeAllowed(sender, to);
         result = super.transfer(to, value);
-        if (transferFee != 0) {
+        uint32 _transferFee = transferFee;
+        if (_transferFee != 0 && !_whitelist[sender] && !_whitelist[to]) {
             HolderManagementStorage storage $ = _getHolderManagementStorage();
-            $._stablecoin.transferFrom(sender, $._wallet, transferFee);
+            $._stablecoin.transferFrom(sender, $._wallet, _transferFee);
         }
     }
 
@@ -226,19 +281,38 @@ contract RemoraRWATokenV2 is
         address sender = _msgSender();
         _exchangeAllowed(from, to);
         result = super.transferFrom(from, to, value);
-        if (transferFee != 0) {
+        uint32 _transferFee = transferFee;
+        if (
+            _transferFee != 0 &&
+            !_whitelist[sender] &&
+            !_whitelist[from] &&
+            !_whitelist[to]
+        ) {
             HolderManagementStorage storage $ = _getHolderManagementStorage();
-            $._stablecoin.transferFrom(sender, $._wallet, transferFee);
+            $._stablecoin.transferFrom(sender, $._wallet, _transferFee);
         }
     }
 
     /**
-     * @notice Burns a number of tokens from the sender.
-     * @param value The amount of tokens to burn.
+     * @notice Burns a number of tokens from the sender, and pays out in stablecoin.
+     * @param amount The amount of tokens to burn.
      */
-    function burn(uint256 value) public whenBurnable whenNotPaused {
-        if (isHolderFrozen(_msgSender())) revert UserIsFrozen(_msgSender());
-        _burn(_msgSender(), value);
+    function burn(uint256 amount) public whenBurnable whenNotPaused {
+        address sender = _msgSender();
+        if (isHolderFrozen(sender)) revert UserIsFrozen(sender);
+
+        uint256 burnPayout = amount * pricePerBurnedToken;
+        _burn(sender, amount);
+
+        HolderManagementStorage storage $ = _getHolderManagementStorage();
+        IERC20 stablecoin = $._stablecoin;
+        uint256 stablecoinBalance = stablecoin.balanceOf(address(this));
+
+        if (burnPayout > stablecoinBalance) {
+            revert InsufficentStablecoinBalance();
+        }
+
+        stablecoin.transfer(sender, burnPayout);
     }
 
     /**
@@ -247,6 +321,7 @@ contract RemoraRWATokenV2 is
      * @param value The number of tokens to burn.
      */
     function burnFrom(address account, uint256 value) public restricted {
+        //should I add whenBurnable?
         _burnFrom(account, value);
     }
 
@@ -260,22 +335,13 @@ contract RemoraRWATokenV2 is
     }
 
     /**
-     * @notice Used to upgrade smart contract. Restricted to authorized accounts.
-     * @param newImplementation The address of the new implementation to be upgraded to.
-     * @param data The data used for initializing the new contract.
-     */
-    function upgradeToAndCall(
-        address newImplementation,
-        bytes memory data
-    ) public payable override restricted {
-        super.upgradeToAndCall(newImplementation, data);
-    }
-
-    /**
      * @notice Authorizes an upgrade to a new contract implementation.
+     * Restricted to authorized accounts only.
      * @param newImplementation The address of the new contract implementation.
      */
-    function _authorizeUpgrade(address newImplementation) internal override {}
+    function _authorizeUpgrade(
+        address newImplementation
+    ) internal override restricted {}
 
     /**
      * @notice Updates internal state during token transfers, including holder management.
@@ -301,5 +367,7 @@ contract RemoraRWATokenV2 is
         _allowlist.exchangeAllowed(from, to);
         if (isHolderFrozen(from)) revert UserIsFrozen(from);
         if (isHolderFrozen(to)) revert UserIsFrozen(to);
+        if (!hasSignedTC(to) && !_whitelist[to])
+            revert TermsAndConditionsNotSigned(to);
     }
 }

@@ -10,6 +10,7 @@ const config: HardhatUserConfig = {
         enabled: true,
         runs: 10000,
       },
+      evmVersion: "cancun",
     },
   },
   defaultNetwork: "hardhat",

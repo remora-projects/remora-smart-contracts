@@ -22,9 +22,7 @@ abstract contract RemoraRWABurnable is
 {
     /// @custom:storage-location erc7201:remora.storage.Burnable
     struct BurnableStorage {
-        /**
-         * @dev Tracks whether the burning functionality is currently enabled.
-         */
+        /// @dev Tracks whether the burning functionality is currently enabled.
         bool _burnable;
     }
 
