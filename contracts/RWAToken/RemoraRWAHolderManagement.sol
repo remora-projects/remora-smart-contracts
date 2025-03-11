@@ -25,6 +25,8 @@ abstract contract RemoraRWAHolderManagement is
 {
     /// @dev Contains token holder's data.
     struct HolderStatus {
+        /// @dev The address this holder's payout should be forwarded to.
+        address forwardPayoutTo;
         bool isFrozen;
         /// @dev Whether or not their payout balance has been previously calulated.
         bool isCalculated;
@@ -41,8 +43,6 @@ abstract contract RemoraRWAHolderManagement is
         uint32 frozenTimestamp;
         /// @dev The value of the most recently calculated payout.
         uint256 calculatedPayout;
-        /// @dev The address this holder's payout should be forwarded to.
-        address forwardPayoutTo;
         /// @dev The addresses that are forwarding payouts to holder
         address[] forwardedPayouts;
     }
