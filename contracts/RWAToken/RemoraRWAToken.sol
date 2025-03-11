@@ -29,14 +29,13 @@ contract RemoraRWAToken is
     RemoraRWABurnable,
     RemoraRWAHolderManagement
 {
+    /// @dev The flat fee for token transfers, 6 decimals USD
+    uint32 transferFee;
+    /// @dev The price per token paid out when burned, 6 decimals USD
+    uint64 pricePerBurnedToken;
     /// @dev Reference to the external allowlist contract for managing user permissions.
     IAllowlist private _allowlist;
-    // In order to add future smart contract interface, for oracle + price calulation purposes
-    uint256 __gap;
-    /// @dev The flat fee for token transfers
-    uint256 transferFee;
-    /// @dev The price per token paid out when burned
-    uint256 pricePerBurnedToken;
+    //Thinking about adding a gap here to save space for another address, oracle smart contract
     /// @dev Mapping that contains addresses that are able to send and recieve tokens without a fee
     mapping(address => bool) private _whitelist;
 
@@ -44,13 +43,13 @@ contract RemoraRWAToken is
      * @notice Event emitted when flat fee has changed.
      * @param newFee Value of the new fee.
      */
-    event TransferFeeChanged(uint256 newFee);
+    event TransferFeeChanged(uint32 newFee);
 
     /**
      * @notice Event emitted when a value for the burned token is set
      * @param price The price that will be paid out per burned token
      */
-    event NewPricePerBurnedToken(uint256 price);
+    event NewPricePerBurnedToken(uint64 price);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -76,8 +75,8 @@ contract RemoraRWAToken is
         address allowList,
         address stablecoin,
         address wallet,
-        uint256 initialPayoutFee,
-        uint256 initialTransferFee,
+        uint32 initialPayoutFee,
+        uint32 initialTransferFee,
         string memory _name,
         string memory _symbol,
         uint256 _initialSupply
@@ -107,10 +106,7 @@ contract RemoraRWAToken is
      */
     function addToWhitelist(address addrToAdd) external restricted {
         if (addrToAdd == address(0)) revert InvalidAddress();
-        if (!_whitelist[addrToAdd]) {
-            // do I even need this check?
-            _whitelist[addrToAdd] = true;
-        }
+        _whitelist[addrToAdd] = true;
     }
 
     /**
@@ -119,18 +115,14 @@ contract RemoraRWAToken is
      */
     function removeFromWhitelist(address addrToRemove) external restricted {
         if (addrToRemove == address(0)) revert InvalidAddress();
-        if (_whitelist[addrToRemove]) {
-            // Do I need this check above?
-            _whitelist[addrToRemove] = false;
-        }
+        _whitelist[addrToRemove] = false;
     }
 
     /**
      * @notice Sets new transfer fee.
      * @param newFee New transfer fee value, in USD, 6 decimals.
      */
-    function setTransferFee(uint256 newFee) external restricted {
-        require(newFee >= 0); //can I just remove this check since it's a uint being passed?
+    function setTransferFee(uint32 newFee) external restricted {
         transferFee = newFee;
         emit TransferFeeChanged(newFee);
     }
@@ -174,12 +166,12 @@ contract RemoraRWAToken is
         uint256 value,
         bool checkTC
     ) external restricted returns (bool) {
-        HolderManagementStorage storage $ = _getHolderManagementStorage();
-        HolderStatus memory hStatus = $._holderStatus[from];
         if (checkTC && !hasSignedTC(to)) revert TermsAndConditionsNotSigned(to);
+
+        HolderManagementStorage storage $ = _getHolderManagementStorage();
         if (
-            hStatus.isFrozen &&
-            block.timestamp > hStatus.frozenTimestamp + 30 days
+            $._holderStatus[from].isFrozen &&
+            block.timestamp > $._holderStatus[from].frozenTimestamp + 30 days
         ) {
             super._transfer(from, to, value);
             return true;
@@ -226,7 +218,7 @@ contract RemoraRWAToken is
      */
     function enableBurning(
         bool changePrice,
-        uint256 burnPrice
+        uint64 burnPrice
     ) external restricted {
         _enableBurning();
         if (changePrice) {
@@ -256,9 +248,10 @@ contract RemoraRWAToken is
         address sender = _msgSender();
         _exchangeAllowed(sender, to);
         result = super.transfer(to, value);
-        if (transferFee != 0 && !_whitelist[sender] && !_whitelist[to]) {
+        uint32 _transferFee = transferFee;
+        if (_transferFee != 0 && !_whitelist[sender] && !_whitelist[to]) {
             HolderManagementStorage storage $ = _getHolderManagementStorage();
-            $._stablecoin.transferFrom(sender, $._wallet, transferFee);
+            $._stablecoin.transferFrom(sender, $._wallet, _transferFee);
         }
     }
 
@@ -278,14 +271,15 @@ contract RemoraRWAToken is
         address sender = _msgSender();
         _exchangeAllowed(from, to);
         result = super.transferFrom(from, to, value);
+        uint32 _transferFee = transferFee;
         if (
-            transferFee != 0 &&
+            _transferFee != 0 &&
             !_whitelist[sender] &&
             !_whitelist[from] &&
             !_whitelist[to]
         ) {
             HolderManagementStorage storage $ = _getHolderManagementStorage();
-            $._stablecoin.transferFrom(sender, $._wallet, transferFee);
+            $._stablecoin.transferFrom(sender, $._wallet, _transferFee);
         }
     }
 

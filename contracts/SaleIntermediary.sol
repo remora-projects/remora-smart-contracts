@@ -31,23 +31,23 @@ contract RemoraSaleIntermediary is AccessManaged, ReentrancyGuard {
      * @param seller The address of the the seller.
      * @param buyer The address of the buyer.
      * @param assetSold The token the seller is providing.
-     * @param assetSoldAmount The amount of the token the seller is selling.
      * @param assetReceived The token the buyer is providing.
-     * @param assetReceivedAmount The amount of the token the buyer is paying.
-     * @param hasSellerFee Boolean flag for fees.
-     * @param feeAmount The amount in tokens of the fee.
      * @param feeToken The address of the token to be used to pay the fee.
+     * @param assetSoldAmount The amount of the token the seller is selling.
+     * @param assetReceivedAmount The amount of the token the buyer is paying.
+     * @param feeAmount The amount in tokens of the fee.
+     * @param hasSellerFee Boolean flag for fees.
      */
     struct TradeData {
         address seller;
         address buyer;
         address assetSold;
-        uint256 assetSoldAmount;
         address assetReceived;
-        uint256 assetReceivedAmount;
-        bool hasSellerFee;
-        uint256 feeAmount;
         address feeToken;
+        uint128 assetSoldAmount;
+        uint128 assetReceivedAmount;
+        uint128 feeAmount;
+        bool hasSellerFee;
     }
 
     /**
@@ -55,17 +55,17 @@ contract RemoraSaleIntermediary is AccessManaged, ReentrancyGuard {
      * @param rwaToken The address of the RWA Token that the holder is collecting payout from.
      * @param paymentToken The address of the ERC20 token that the holder will be paid out in.
      * @param paymentTokenAmount The amount of the payment token the holder will recieve.
-     * @param useCustomFee A value indicating whether or not to use a custom fee when user is claiming payout.
      * @param feeValue The value of the fee, used to calculate proper amount for the event emitted in adminClaimPayout.
      * ^ feeValue must always be in USD (6 decimals)
+     * @param useCustomFee A value indicating whether or not to use a custom fee when user is claiming payout.
      */
     struct PayoutData {
         address holder;
         address rwaToken;
         address paymentToken;
-        uint256 paymentTokenAmount;
+        uint128 paymentTokenAmount;
+        uint128 feeValue;
         bool useCustomFee;
-        uint256 feeValue;
     }
 
     /**
