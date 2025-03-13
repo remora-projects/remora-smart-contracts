@@ -70,63 +70,62 @@ describe("RemoraRWAToken Holder Management Tests 3", function () {
       );
     });
 
-    // it("Should distribute payouts correctly, then start forwarding after a payout", async function () {
-    //   const {
-    //     owner,
-    //     investor1,
-    //     investor2,
-    //     remoratoken,
-    //     custodian,
-    //     facilitator,
-    //     allowlist,
-    //     ausd,
-    //   } = await loadFixture(holderManagementTestsSetUp);
-    //   //send stablecoin to payout contract ($1000)
-    //   await ausd.transfer(remoratoken.target, 1000000000);
+    it("Should distribute payouts correctly, then start forwarding after a payout", async function () {
+      const {
+        owner,
+        investor1,
+        investor2,
+        remoratoken,
+        custodian,
+        facilitator,
+        allowlist,
+        ausd,
+      } = await loadFixture(holderManagementTestsSetUp);
+      //send stablecoin to payout contract ($1000)
+      await ausd.transfer(remoratoken.target, 1000000000);
 
-    //   await allowlist.connect(custodian).allowUser(owner);
-    //   await allowlist.connect(custodian).allowUser(investor1);
-    //   await allowlist.connect(custodian).allowUser(investor2);
+      await allowlist.connect(custodian).allowUser(owner);
+      await allowlist.connect(custodian).allowUser(investor1);
+      await allowlist.connect(custodian).allowUser(investor2);
 
-    //   /*
-    //    * Balances:
-    //    * total: 10
-    //    * owner: 4
-    //    * investor1: 5
-    //    * investor2: 1
-    //    */
-    //   await remoratoken.transfer(investor1.address, 5);
-    //   await remoratoken.transfer(investor2.address, 1);
+      /*
+       * Balances:
+       * total: 10
+       * owner: 4
+       * investor1: 5
+       * investor2: 1
+       */
+      await remoratoken.transfer(investor1.address, 5);
+      await remoratoken.transfer(investor2.address, 1);
 
-    //   // Call distributePayout ($500)
-    //   await remoratoken.connect(facilitator).distributePayout(500000000);
+      // Call distributePayout ($500)
+      await remoratoken.connect(facilitator).distributePayout(500000000);
 
-    //   //forward rent distribution from investor1 to investor2
-    //   await remoratoken
-    //     .connect(custodian)
-    //     .setPayoutForwardAddress(investor1.address, investor2.address);
+      //forward rent distribution from investor1 to investor2
+      await remoratoken
+        .connect(custodian)
+        .setPayoutForwardAddress(investor1.address, investor2.address);
+      await remoratoken.connect(facilitator).distributePayout(500000000);
 
-    //   await remoratoken.connect(facilitator).distributePayout(500000000);
+      expect(
+        (
+          await remoratoken.payoutBalance.staticCallResult(investor1.address)
+        ).at(0)
+      ).to.equal(250000000);
 
-    //   expect(
-    //     (
-    //       await remoratoken.payoutBalance.staticCallResult(investor1.address)
-    //     ).at(0)
-    //   ).to.equal(250000000);
+      expect(
+        (
+          await remoratoken.payoutBalance.staticCallResult(investor2.address)
+        ).at(0)
+      ).to.equal(350000000);
 
-    //   expect(
-    //     (
-    //       await remoratoken.payoutBalance.staticCallResult(investor2.address)
-    //     ).at(0)
-    //   ).to.equal(350000000);
-
-    //   expect(
-    //     await remoratoken.connect(investor2).claimPayout()
-    //   ).to.changeTokenBalances(
-    //     ausd,
-    //     [remoratoken, investor2],
-    //     [-349900000, +349900000]
-    //   );
-    // });
+      expect(
+        await remoratoken.connect(investor2).claimPayout()
+      ).to.changeTokenBalances(
+        ausd,
+        [remoratoken, investor2],
+        [-349900000, +349900000]
+      );
+    });
   });
 });

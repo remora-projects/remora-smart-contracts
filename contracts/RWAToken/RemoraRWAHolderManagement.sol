@@ -194,6 +194,7 @@ abstract contract RemoraRWAHolderManagement is
     ) external restricted {
         //should I add an event for this?
         HolderManagementStorage storage $ = _getHolderManagementStorage();
+        payoutBalance(holder); // call so any previous rent is kept by the holder
         $._holderStatus[holder].forwardPayoutTo = forwardingAddress;
         $._holderStatus[forwardingAddress].forwardedPayouts.push(holder);
     }
