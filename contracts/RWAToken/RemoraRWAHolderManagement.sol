@@ -45,7 +45,7 @@ abstract contract RemoraRWAHolderManagement is
 
     /// @dev Contains info at the time of payout distribution
     struct payoutStruct {
-        uint128 amount;
+        uint128 amount; //could get away with this being smaller
         uint128 totalSupply;
     }
 

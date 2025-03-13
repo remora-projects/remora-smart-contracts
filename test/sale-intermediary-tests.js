@@ -21,7 +21,7 @@ describe("Sale Intermediary Tests", function () {
       allowlist,
       ausd,
       accessmanager,
-    } = await deployContractsAndSetVariables(10, 50, 10000, true);
+    } = await deployContractsAndSetVariables(10, 50, 10000, 0, true);
     //token supply: 10
     //transfer fee: 50 = 50 cents (not doing up to 6 decimals in this test)
     //rent fee: 10%

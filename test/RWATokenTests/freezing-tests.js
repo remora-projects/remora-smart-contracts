@@ -17,7 +17,7 @@ const { time } = require("@nomicfoundation/hardhat-network-helpers");
 
 describe("RemoraRWAToken", function () {
   async function freezingFixture() {
-    return await deployContractsAndSetVariables(10, 0, 0, true);
+    return await deployContractsAndSetVariables(10, 0, 0, 0, true);
   }
 
   describe("Freezing Tests", function () {
@@ -189,7 +189,7 @@ describe("RemoraRWAToken", function () {
       await expect(
         remoratoken
           .connect(facilitator)
-          .adminTransferFrom(investor1.address, owner.address, 2, false)
+          .adminTransferFrom(investor1.address, owner.address, false, false, 2)
       ).to.be.revertedWithCustomError(
         remoratoken,
         "ERC20InsufficientAllowance"
@@ -200,7 +200,7 @@ describe("RemoraRWAToken", function () {
       await expect(
         remoratoken
           .connect(facilitator)
-          .adminTransferFrom(investor1.address, owner.address, 2, false)
+          .adminTransferFrom(investor1.address, owner.address, false, false, 2)
       ).to.changeTokenBalances(remoratoken, [investor1, owner], [-2, +2]);
 
       expect(await remoratoken.hasSignedTC(investor1.address)).to.be.false;
