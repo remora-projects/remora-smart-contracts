@@ -105,11 +105,9 @@ async function setUpAndDeployContracts(
       allowlist.target,
       ausd.target,
       owner.address,
-      rentFee, //10000, // fee, 10%
-      transferFee,
       "Echo Apartments",
       "ECHO",
-      tokenSupply, //10, //token supply
+      tokenSupply,
     ],
     {
       initializer: "initialize",
@@ -126,6 +124,10 @@ async function setUpAndDeployContracts(
     remoratoken,
     allowlist
   );
+
+  if (rentFee != 0) await remoratoken.connect(custodian).setPayoutFee(rentFee);
+  if (transferFee != 0)
+    await remoratoken.connect(custodian).setTransferFee(transferFee);
 
   return { remoratoken, allowlist, ausd, accessmanager };
 }
