@@ -110,13 +110,13 @@ async function setUpAccessManagerIntermediary( // only call after setting up tok
 
   const facilitator_selectors = [
     getSelector(
-      "swapTokens((address,address,address,address,address,uint128,uint128,uint128,bool))"
+      "swapTokens((address,address,address,address,address,bool,uint128,uint128,uint128))"
     ),
     getSelector(
-      "processRwaSale((address,address,address,address,address,uint128,uint128,uint128,bool))"
+      "processRwaSale((address,address,address,address,address,bool,uint128,uint128,uint128))"
     ),
     getSelector(
-      "processPayout((address,address,address,uint128,uint128,bool))"
+      "processPayout((address,address,address,bool,uint128,uint128))"
     ),
   ];
 
