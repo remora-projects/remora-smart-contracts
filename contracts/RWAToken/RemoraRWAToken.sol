@@ -63,8 +63,6 @@ contract RemoraRWAToken is
      * @param allowList The address of the allowlist contract.
      * @param stablecoin The address of the stablecoin used for payouts.
      * @param wallet The address of the wallet to withdraw contract funds.
-     * @param initialPayoutFee The flat fee for payouts.
-     * @param initialTransferFee The flat fee for token transfers.
      * @param _name The name of the token.
      * @param _symbol The symbol of the token.
      * @param _initialSupply The initial supply of tokens, in whole units.
@@ -75,8 +73,6 @@ contract RemoraRWAToken is
         address allowList,
         address stablecoin,
         address wallet,
-        uint32 initialPayoutFee,
-        uint32 initialTransferFee,
         string memory _name,
         string memory _symbol,
         uint256 _initialSupply
@@ -85,18 +81,11 @@ contract RemoraRWAToken is
         __ERC20Permit_init(_name);
         __Pausable_init();
         __RemoraBurnable_init();
-        __RemoraHolderManagement_init(
-            initialAuthority,
-            stablecoin,
-            wallet,
-            initialPayoutFee
-        );
+        __RemoraHolderManagement_init(initialAuthority, stablecoin, wallet, 0);
         __UUPSUpgradeable_init();
 
         _allowlist = IAllowlist(allowList);
-        transferFee = initialTransferFee;
-        pricePerBurnedToken = 0; //initially 0, as not burnable
-
+        _whitelist[tokenOwner] = true;
         _mint(tokenOwner, _initialSupply * 10 ** decimals());
     }
 

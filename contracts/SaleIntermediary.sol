@@ -33,10 +33,10 @@ contract RemoraSaleIntermediary is AccessManaged, ReentrancyGuard {
      * @param assetSold The token the seller is providing.
      * @param assetReceived The token the buyer is providing.
      * @param feeToken The address of the token to be used to pay the fee.
+     * @param hasSellerFee Boolean flag for fees.
      * @param assetSoldAmount The amount of the token the seller is selling.
      * @param assetReceivedAmount The amount of the token the buyer is paying.
      * @param feeAmount The amount in tokens of the fee.
-     * @param hasSellerFee Boolean flag for fees.
      */
     struct TradeData {
         address seller;
@@ -44,28 +44,28 @@ contract RemoraSaleIntermediary is AccessManaged, ReentrancyGuard {
         address assetSold;
         address assetReceived;
         address feeToken;
+        bool hasSellerFee;
         uint128 assetSoldAmount;
         uint128 assetReceivedAmount;
         uint128 feeAmount;
-        bool hasSellerFee;
     }
 
     /**
      * @param holder The address of the token holder claiming the payout.
      * @param rwaToken The address of the RWA Token that the holder is collecting payout from.
      * @param paymentToken The address of the ERC20 token that the holder will be paid out in.
+     * @param useCustomFee A value indicating whether or not to use a custom fee when user is claiming payout.
      * @param paymentTokenAmount The amount of the payment token the holder will recieve.
      * @param feeValue The value of the fee, used to calculate proper amount for the event emitted in adminClaimPayout.
      * ^ feeValue must always be in USD (6 decimals)
-     * @param useCustomFee A value indicating whether or not to use a custom fee when user is claiming payout.
      */
     struct PayoutData {
         address holder;
         address rwaToken;
         address paymentToken;
+        bool useCustomFee;
         uint128 paymentTokenAmount;
         uint128 feeValue;
-        bool useCustomFee;
     }
 
     /**
@@ -101,7 +101,7 @@ contract RemoraSaleIntermediary is AccessManaged, ReentrancyGuard {
     }
 
     /**
-     * @notice Facilitates the swap of one type of token for another.
+     * @notice Facilitates the swap of one type of token for another. (most likely wont need this)
      * @dev Both parties must 'approve' or 'permit' funds to the contract before calling this function.
      * @param data The struct containing the data for the function.
      */
