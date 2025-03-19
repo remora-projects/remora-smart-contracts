@@ -48,7 +48,7 @@ abstract contract RemoraRWAHolderManagement is
     }
 
     /// @dev Contains info at the time of payout distribution
-    struct payoutStruct {
+    struct PayoutInfo {
         uint128 amount;
         uint128 totalSupply;
     }
@@ -70,7 +70,7 @@ abstract contract RemoraRWAHolderManagement is
         /// @dev The current index that is yet to be paid out.
         uint8 _currentPayoutIndex;
         /// @dev mapping to a struct containing payout amounts and tokenSupply that the payout indices correlate to.
-        mapping(uint256 => payoutStruct) _payouts;
+        mapping(uint256 => PayoutInfo) _payouts;
         /// @dev A mapping of token holder addresses to a struct containing holder info.
         mapping(address => HolderStatus) _holderStatus;
         /// @dev A mapping that links holder addresses to another mapping that links payout indices to TokenBalanceChange structs.
@@ -316,7 +316,7 @@ abstract contract RemoraRWAHolderManagement is
      */
     function distributePayout(uint128 payoutAmount) external restricted {
         HolderManagementStorage storage $ = _getHolderManagementStorage();
-        $._payouts[$._currentPayoutIndex++] = payoutStruct({
+        $._payouts[$._currentPayoutIndex++] = PayoutInfo({
             amount: payoutAmount,
             totalSupply: SafeCast.toUint128(totalSupply())
         });
@@ -465,7 +465,7 @@ abstract contract RemoraRWAHolderManagement is
                 (!curEntry.isValid || balanceHistoryIndex > i)
             ) curEntry = $._balanceHistory[holder][--balanceHistoryIndex];
 
-            payoutStruct memory pInfo = $._payouts[i];
+            PayoutInfo memory pInfo = $._payouts[i];
             payoutAmount +=
                 (curEntry.tokenBalance * pInfo.amount) /
                 pInfo.totalSupply;
