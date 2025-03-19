@@ -210,6 +210,7 @@ abstract contract RemoraRWAHolderManagement is
         HolderStatus storage holderStatus = $._holderStatus[holder];
         address forwardedAddress = holderStatus.forwardPayoutTo;
         if (forwardedAddress != address(0)) {
+            payoutBalance(holder); // call so any uncalculated rent is given to forwarding address
             holderStatus.forwardPayoutTo = address(0);
 
             HolderStatus storage forwardedHolder = $._holderStatus[
