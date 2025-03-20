@@ -327,8 +327,10 @@ contract RemoraRWAToken is
      * @param account The address whose tokens will be burned.
      * @param value The number of tokens to burn.
      */
-    function burnFrom(address account, uint256 value) public restricted {
-        //should I add whenBurnable?
+    function burnFrom(
+        address account,
+        uint256 value
+    ) public whenBurnable restricted {
         _burnFrom(account, value);
     }
 

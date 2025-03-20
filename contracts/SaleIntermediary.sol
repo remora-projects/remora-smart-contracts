@@ -15,6 +15,8 @@ interface IRwaToken {
         bool,
         bool
     ) external returns (bool);
+
+    function burnFrom(address, uint256) external;
 }
 
 /**
@@ -67,6 +69,21 @@ contract RemoraSaleIntermediary is AccessManaged, ReentrancyGuard {
         bool useCustomFee;
         uint128 paymentTokenAmount;
         uint128 feeValue;
+    }
+
+    /**
+     * @param holder The address of the token holder whose tokens are to be burned.
+     * @param rwaToken The address of the RWA Token that the holder is trying to burn.
+     * @param paymentToken The address of the ERC20 token that the holder will be paid out in.
+     * @param rwaBurnAmount The number of RWA Tokens to be burned.
+     * @param paymentTokenAmount The amount of the payment token the holder will recieve.
+     */
+    struct BurnData {
+        address holder;
+        address rwaToken;
+        address paymentToken;
+        uint256 rwaBurnAmount;
+        uint256 paymentAmount;
     }
 
     /**
@@ -166,11 +183,12 @@ contract RemoraSaleIntermediary is AccessManaged, ReentrancyGuard {
     ) external restricted nonReentrant {
         address holder = data.holder;
 
-        if (
-            holder == address(0) ||
-            data.rwaToken == address(0) ||
-            data.paymentToken == address(0)
-        ) revert InvalidAddress();
+        _validateAddresses(
+            holder,
+            data.rwaToken,
+            data.paymentToken,
+            address(1)
+        );
 
         IRwaToken(data.rwaToken).adminClaimPayout(
             holder,
@@ -183,6 +201,32 @@ contract RemoraSaleIntermediary is AccessManaged, ReentrancyGuard {
             _fundingWallet,
             holder,
             data.paymentTokenAmount
+        );
+    }
+
+    /**
+     * @notice Facilitates the burning and payout of RWA tokens.
+     * @dev The holder must approve the RWA tokens to burn, and the _fundingWallet must approve the tokens to transfer.
+     * @param data The struct containing the data for the function.
+     */
+    function processBurn(
+        BurnData calldata data
+    ) external restricted nonReentrant {
+        address holder = data.holder;
+
+        _validateAddresses(
+            holder,
+            data.rwaToken,
+            data.paymentToken,
+            address(1)
+        );
+
+        IRwaToken(data.rwaToken).burnFrom(holder, data.rwaBurnAmount);
+
+        IERC20(data.paymentToken).transferFrom(
+            _fundingWallet,
+            holder,
+            data.paymentAmount
         );
     }
 
