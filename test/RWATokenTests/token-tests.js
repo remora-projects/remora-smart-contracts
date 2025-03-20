@@ -10,12 +10,12 @@ const { expect } = require("chai");
 
 describe("RemoraRWAToken Tests", function () {
   async function setUpRemoraRWATests() {
-    return await deployContractsAndSetVariables(10, 0, 0, true);
+    return await deployContractsAndSetVariables(10, 0, 0, 0, true);
   }
 
   async function setUpRemoraRWATestsNS() {
-    // No sign
-    return await deployContractsAndSetVariables(10, 0, 0, false);
+    // Not signing TC
+    return await deployContractsAndSetVariables(10, 0, 0, 0, false);
   }
 
   it("Should block transfer token with fee", async function () {
@@ -195,7 +195,13 @@ describe("RemoraRWAToken Tests", function () {
 
     await allowlist.connect(custodian).allowUser(investor1.address);
     await expect(
-      remoratoken.adminTransferFrom(owner.address, investor1.address, 10, true)
+      remoratoken.adminTransferFrom(
+        owner.address,
+        investor1.address,
+        10,
+        true,
+        false
+      )
     ).to.be.revertedWithCustomError(remoratoken, "AccessManagedUnauthorized");
   });
 

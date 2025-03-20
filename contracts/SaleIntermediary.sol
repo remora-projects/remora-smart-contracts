@@ -12,6 +12,7 @@ interface IRwaToken {
         address,
         address,
         uint256,
+        bool,
         bool
     ) external returns (bool);
 }
@@ -151,6 +152,7 @@ contract RemoraSaleIntermediary is AccessManaged, ReentrancyGuard {
             seller,
             buyer,
             data.assetSoldAmount,
+            true,
             true
         );
     }

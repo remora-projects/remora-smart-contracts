@@ -16,7 +16,7 @@ const { expect } = require("chai");
 
 describe("RemoraRWAToken Holder Management Tests 2", function () {
   async function holderManagementTestsSetUp() {
-    return await deployContractsAndSetVariables(10, 0, 10000, true); //10% fee
+    return await deployContractsAndSetVariables(10, 0, 10000, 0, true); //10% fee
   }
 
   describe("Holder Management Tests, claims + fee", function () {

@@ -4,6 +4,7 @@ pragma solidity ^0.8.22;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {RemoraRWABurnable} from "./RemoraRWABurnable.sol";
+import {RemoraRWALockUp} from "./RemoraRWALockUp.sol";
 import {RemoraRWAHolderManagement} from "./RemoraRWAHolderManagement.sol";
 import {ERC20PermitUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PermitUpgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
@@ -27,6 +28,7 @@ contract RemoraRWAToken is
     ERC20PermitUpgradeable,
     PausableUpgradeable,
     RemoraRWABurnable,
+    RemoraRWALockUp,
     RemoraRWAHolderManagement
 {
     /// @dev The flat fee for token transfers, 6 decimals USD
@@ -81,12 +83,22 @@ contract RemoraRWAToken is
         __ERC20Permit_init(_name);
         __Pausable_init();
         __RemoraBurnable_init();
-        __RemoraHolderManagement_init(initialAuthority, stablecoin, wallet, 0);
+        __RemoraLockUp_init(0); //start with 0 lock up time
+        __RemoraHolderManagement_init(
+            initialAuthority,
+            stablecoin,
+            wallet,
+            0 //starts at zero, need to update it later
+        );
         __UUPSUpgradeable_init();
 
         _allowlist = IAllowlist(allowList);
-        _whitelist[tokenOwner] = true;
+        _whitelist[tokenOwner] = true; //whitelist owner to be able to send tokens freely
         _mint(tokenOwner, _initialSupply * 10 ** decimals());
+    }
+
+    function setLockUpTime(uint32 newLockUpTime) external restricted {
+        _setLockUpTime(newLockUpTime);
     }
 
     /**
@@ -147,15 +159,20 @@ contract RemoraRWAToken is
      * @param to The recipient address.
      * @param value The number of tokens to transfer.
      * @param checkTC Whether or not to check if the user tokens are being sent to have signed the T&C
-     * @return A boolean indicating whether the transfer succeeded.
+     * @param enforceLock Whether or not to enforce token locking mechanism
+     * @return A boolean indicating whether the transfer succeeded or not.
      */
     function adminTransferFrom(
         address from,
         address to,
         uint256 value,
-        bool checkTC
+        bool checkTC,
+        bool enforceLock
     ) external restricted returns (bool) {
         if (checkTC && !hasSignedTC(to)) revert TermsAndConditionsNotSigned(to);
+
+        if (!_whitelist[from]) _unlockTokens(from, value, !enforceLock);
+        if (enforceLock && !_whitelist[to]) _lockTokens(to, value);
 
         HolderManagementStorage storage $ = _getHolderManagementStorage();
         if (
@@ -236,9 +253,17 @@ contract RemoraRWAToken is
     ) public override whenNotPaused nonReentrant returns (bool result) {
         address sender = _msgSender();
         _exchangeAllowed(sender, to);
+
+        bool fromWL = _whitelist[sender];
+        bool toWL = _whitelist[to];
+
+        if (!fromWL) _unlockTokens(sender, value, false);
+        if (!toWL) _lockTokens(to, value);
+
         result = super.transfer(to, value);
+
         uint32 _transferFee = transferFee;
-        if (_transferFee != 0 && !_whitelist[sender] && !_whitelist[to]) {
+        if (_transferFee != 0 && !fromWL && !toWL) {
             HolderManagementStorage storage $ = _getHolderManagementStorage();
             $._stablecoin.transferFrom(sender, $._wallet, _transferFee);
         }
@@ -257,16 +282,19 @@ contract RemoraRWAToken is
         address to,
         uint256 value
     ) public override whenNotPaused nonReentrant returns (bool result) {
-        address sender = _msgSender();
         _exchangeAllowed(from, to);
+
+        address sender = _msgSender();
+        bool fromWL = _whitelist[from];
+        bool toWL = _whitelist[to];
+
+        if (!fromWL) _unlockTokens(from, value, false);
+        if (!toWL) _lockTokens(to, value);
+
         result = super.transferFrom(from, to, value);
+
         uint32 _transferFee = transferFee;
-        if (
-            _transferFee != 0 &&
-            !_whitelist[sender] &&
-            !_whitelist[from] &&
-            !_whitelist[to]
-        ) {
+        if (_transferFee != 0 && !_whitelist[sender] && !fromWL && !toWL) {
             HolderManagementStorage storage $ = _getHolderManagementStorage();
             $._stablecoin.transferFrom(sender, $._wallet, _transferFee);
         }

@@ -6,6 +6,7 @@ async function deployContractsAndSetVariables(
   tokenSupply,
   transferFee,
   rentFee,
+  lockUpPeriod,
   allSignTC
 ) {
   const [
@@ -27,7 +28,8 @@ async function deployContractsAndSetVariables(
       state_changer,
       tokenSupply,
       transferFee,
-      rentFee
+      rentFee,
+      lockUpPeriod
     );
 
   if (allSignTC)
@@ -65,7 +67,8 @@ async function setUpAndDeployContracts(
   state_changer,
   tokenSupply,
   transferFee,
-  rentFee
+  rentFee,
+  lockUpPeriod
 ) {
   //set up stablecoin
   const AUSD = await ethers.getContractFactory("Stablecoin");
@@ -126,8 +129,12 @@ async function setUpAndDeployContracts(
   );
 
   if (rentFee != 0) await remoratoken.connect(custodian).setPayoutFee(rentFee);
+
   if (transferFee != 0)
     await remoratoken.connect(custodian).setTransferFee(transferFee);
+
+  if (lockUpPeriod != 0)
+    await remoratoken.connect(custodian).setLockUpTime(lockUpPeriod);
 
   return { remoratoken, allowlist, ausd, accessmanager };
 }
