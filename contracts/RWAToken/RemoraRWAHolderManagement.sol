@@ -25,6 +25,8 @@ abstract contract RemoraRWAHolderManagement is
 {
     /// @dev Contains token holder's data.
     struct HolderStatus {
+        /// @dev The address this holder's payout should be forwarded to.
+        address forwardPayoutTo;
         bool isFrozen;
         /// @dev Whether or not their payout balance has been previously calulated.
         bool isCalculated;
@@ -41,10 +43,12 @@ abstract contract RemoraRWAHolderManagement is
         uint32 frozenTimestamp;
         /// @dev The value of the most recently calculated payout.
         uint256 calculatedPayout;
+        /// @dev The addresses that are forwarding payouts to holder
+        address[] forwardedPayouts;
     }
 
     /// @dev Contains info at the time of payout distribution
-    struct payoutStruct {
+    struct PayoutInfo {
         uint128 amount;
         uint128 totalSupply;
     }
@@ -66,7 +70,7 @@ abstract contract RemoraRWAHolderManagement is
         /// @dev The current index that is yet to be paid out.
         uint8 _currentPayoutIndex;
         /// @dev mapping to a struct containing payout amounts and tokenSupply that the payout indices correlate to.
-        mapping(uint256 => payoutStruct) _payouts;
+        mapping(uint256 => PayoutInfo) _payouts;
         /// @dev A mapping of token holder addresses to a struct containing holder info.
         mapping(address => HolderStatus) _holderStatus;
         /// @dev A mapping that links holder addresses to another mapping that links payout indices to TokenBalanceChange structs.
@@ -178,6 +182,55 @@ abstract contract RemoraRWAHolderManagement is
     }
 
     /**
+     * @notice Sets an address that is forwarded the holder's payout
+     * @dev Main purpose is for when property tokens are held in a smart contract
+     *      that shouldn't recieve rent (ex. liquidity pool)
+     * @param holder The holder whose payout is being forwarded
+     * @param forwardingAddress The address the payout is forwarded to
+     */
+    function setPayoutForwardAddress(
+        address holder,
+        address forwardingAddress
+    ) external restricted {
+        //should I add an event for this?
+        HolderManagementStorage storage $ = _getHolderManagementStorage();
+        payoutBalance(holder); // call so any previous rent is kept by the holder
+        $._holderStatus[holder].forwardPayoutTo = forwardingAddress;
+        $._holderStatus[forwardingAddress].forwardedPayouts.push(holder);
+    }
+
+    /**
+     * @notice Removes rent forwarding
+     * @dev Each holder only forwards to one account
+     * @param holder The holder whose payouts should no longer be forwarded
+     */
+    function removePayoutForwardAddress(address holder) external restricted {
+        HolderManagementStorage storage $ = _getHolderManagementStorage();
+
+        HolderStatus storage holderStatus = $._holderStatus[holder];
+        address forwardedAddress = holderStatus.forwardPayoutTo;
+        if (forwardedAddress != address(0)) {
+            payoutBalance(holder); // call so any uncalculated rent is given to forwarding address
+            holderStatus.forwardPayoutTo = address(0);
+
+            HolderStatus storage forwardedHolder = $._holderStatus[
+                forwardedAddress
+            ];
+            uint256 len = forwardedHolder.forwardedPayouts.length;
+            if (len > 1) {
+                for (uint256 i = 0; i < len; ++i) {
+                    if (forwardedHolder.forwardedPayouts[i] == holder) {
+                        forwardedHolder.forwardedPayouts[i] = forwardedHolder
+                            .forwardedPayouts[len - 1];
+                        break;
+                    }
+                }
+            }
+            forwardedHolder.forwardedPayouts.pop();
+        }
+    }
+
+    /**
      * @notice Used to set new value for the fixed payout fee.
      * @dev Restricted to authorized accounts
      * @param newFee The new value for the fixed payout fee, in USD, 6 decimals.
@@ -263,7 +316,7 @@ abstract contract RemoraRWAHolderManagement is
      */
     function distributePayout(uint128 payoutAmount) external restricted {
         HolderManagementStorage storage $ = _getHolderManagementStorage();
-        $._payouts[$._currentPayoutIndex++] = payoutStruct({
+        $._payouts[$._currentPayoutIndex++] = PayoutInfo({
             amount: payoutAmount,
             totalSupply: SafeCast.toUint128(totalSupply())
         });
@@ -387,6 +440,11 @@ abstract contract RemoraRWAHolderManagement is
             rHolderStatus.lastPayoutIndexCalculated == currentPayoutIndex - 1
         ) return rHolderStatus.calculatedPayout;
 
+        //runs payoutBalance on the addresses that are forwarding payouts to this address
+        for (uint256 i = 0; i < rHolderStatus.forwardedPayouts.length; ++i) {
+            payoutBalance(rHolderStatus.forwardedPayouts[i]);
+        }
+
         uint256 payoutAmount;
         uint8 payRangeStart = rHolderStatus.isFrozen
             ? rHolderStatus.frozenIndex - 1
@@ -407,7 +465,7 @@ abstract contract RemoraRWAHolderManagement is
                 (!curEntry.isValid || balanceHistoryIndex > i)
             ) curEntry = $._balanceHistory[holder][--balanceHistoryIndex];
 
-            payoutStruct memory pInfo = $._payouts[i];
+            PayoutInfo memory pInfo = $._payouts[i];
             payoutAmount +=
                 (curEntry.tokenBalance * pInfo.amount) /
                 pInfo.totalSupply;
@@ -416,10 +474,16 @@ abstract contract RemoraRWAHolderManagement is
 
         //update values
         HolderStatus storage holderStatus = $._holderStatus[holder];
-
-        holderStatus.calculatedPayout += payoutAmount;
         holderStatus.isCalculated = true;
         holderStatus.lastPayoutIndexCalculated = payRangeStart;
+
+        //add current payout to calculated payout, or forward it to specified address
+        address payoutForwardAddr = holderStatus.forwardPayoutTo;
+        if (payoutForwardAddr == address(0)) {
+            holderStatus.calculatedPayout += payoutAmount;
+        } else {
+            $._holderStatus[payoutForwardAddr].calculatedPayout += payoutAmount;
+        }
         return holderStatus.calculatedPayout;
     }
 

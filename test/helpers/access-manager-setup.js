@@ -38,6 +38,7 @@ async function setUpAccessManagerToken(
     getSelector("addToWhitelist(address)"),
     getSelector("removeFromWhitelist(address)"),
     getSelector("setPayoutForwardAddress(address,address)"),
+    getSelector("removePayoutForwardAddress(address)"),
   ];
 
   const custodian_allowlist_selectors = [
