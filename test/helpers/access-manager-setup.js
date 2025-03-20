@@ -50,7 +50,7 @@ async function setUpAccessManagerToken(
   const facilitator_selectors = [
     getSelector("distributePayout(uint128)"),
     getSelector("adminClaimPayout(address,bool,bool,uint256)"),
-    getSelector("adminTransferFrom(address,address,bool,bool,uint256)"),
+    getSelector("adminTransferFrom(address,address,uint256,bool,bool)"),
     getSelector("burnFrom(address,uint256)"),
   ];
 
@@ -100,7 +100,7 @@ async function setUpAccessManagerIntermediary( // only call after setting up tok
   facilitator
 ) {
   const intermediary_selectors = [
-    getSelector("adminTransferFrom(address,address,bool,bool,uint256)"),
+    getSelector("adminTransferFrom(address,address,uint256,bool,bool)"),
     getSelector("adminClaimPayout(address,bool,bool,uint256)"),
   ];
 

@@ -189,7 +189,7 @@ describe("RemoraRWAToken", function () {
       await expect(
         remoratoken
           .connect(facilitator)
-          .adminTransferFrom(investor1.address, owner.address, false, false, 2)
+          .adminTransferFrom(investor1.address, owner.address, 2, false, false)
       ).to.be.revertedWithCustomError(
         remoratoken,
         "ERC20InsufficientAllowance"
@@ -200,7 +200,7 @@ describe("RemoraRWAToken", function () {
       await expect(
         remoratoken
           .connect(facilitator)
-          .adminTransferFrom(investor1.address, owner.address, false, false, 2)
+          .adminTransferFrom(investor1.address, owner.address, 2, false, false)
       ).to.changeTokenBalances(remoratoken, [investor1, owner], [-2, +2]);
 
       expect(await remoratoken.hasSignedTC(investor1.address)).to.be.false;

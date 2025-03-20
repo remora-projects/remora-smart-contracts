@@ -55,7 +55,7 @@ abstract contract RemoraRWALockUp is Initializable {
     function _lockTokens(address holder, uint256 amount) internal {
         LockUpStorage storage $ = _getLockUpStorage();
 
-        if ($._lockUpTime == 0) return;
+        if ($._lockUpTime == 0 || amount == 0) return;
 
         UserLockInfo storage userData = $._userData[holder];
         uint16 len = userData.endInd - userData.startInd;
@@ -89,15 +89,24 @@ abstract contract RemoraRWALockUp is Initializable {
         }
     }
 
-    function _unlockTokens(address holder, uint256 amount) internal {
+    // maybe add an extra bool param that can negate the time if we need to take tokens without messing up the user's token lock
+    function _unlockTokens(
+        address holder,
+        uint256 amount,
+        bool disregardTime
+    ) internal {
         LockUpStorage storage $ = _getLockUpStorage();
-        if ($._lockUpTime == 0) return;
         uint32 lockUpTime = $._lockUpTime;
+        if (lockUpTime == 0 || amount == 0) return;
+
         uint32 curTime = SafeCast.toUint32(block.timestamp);
         UserLockInfo storage userData = $._userData[holder];
 
         for (uint16 i = userData.startInd; i < userData.endInd; ++i) {
-            if (curTime - userData.tokenLockUp[i].time < lockUpTime) break;
+            if (
+                !disregardTime &&
+                curTime - userData.tokenLockUp[i].time < lockUpTime
+            ) break;
             uint32 curEntryAmount = userData.tokenLockUp[i].amount;
 
             if (curEntryAmount > amount) {
@@ -107,6 +116,7 @@ abstract contract RemoraRWALockUp is Initializable {
             } else {
                 ++userData.startInd;
                 amount -= curEntryAmount;
+                if (amount == 0) break;
             }
         }
         if (amount != 0) revert CannotUnlockTokens();

@@ -198,9 +198,9 @@ describe("RemoraRWAToken Tests", function () {
       remoratoken.adminTransferFrom(
         owner.address,
         investor1.address,
+        10,
         true,
-        false,
-        10
+        false
       )
     ).to.be.revertedWithCustomError(remoratoken, "AccessManagedUnauthorized");
   });

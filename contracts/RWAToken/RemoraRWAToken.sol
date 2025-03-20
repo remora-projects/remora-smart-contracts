@@ -4,7 +4,7 @@ pragma solidity ^0.8.22;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {RemoraRWABurnable} from "./RemoraRWABurnable.sol";
-import {RemoraRWALockUp} from "./RemoraRWATokenLockUp.sol";
+import {RemoraRWALockUp} from "./RemoraRWALockUp.sol";
 import {RemoraRWAHolderManagement} from "./RemoraRWAHolderManagement.sol";
 import {ERC20PermitUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PermitUpgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
@@ -157,22 +157,22 @@ contract RemoraRWAToken is
      * @dev Calls OpenZeppelin ERC20Upgradeable transferFrom function.
      * @param from The address from which tokens are being transferred.
      * @param to The recipient address.
-     * @param checkTC Whether or not to check if the user tokens are being sent to have signed the T&C
      * @param value The number of tokens to transfer.
-     * @return A boolean indicating whether the transfer succeeded.
+     * @param checkTC Whether or not to check if the user tokens are being sent to have signed the T&C
+     * @param enforceLock Whether or not to enforce token locking mechanism
+     * @return A boolean indicating whether the transfer succeeded or not.
      */
     function adminTransferFrom(
         address from,
         address to,
+        uint256 value,
         bool checkTC,
-        bool enforceLock,
-        uint256 value
+        bool enforceLock
     ) external restricted returns (bool) {
         if (checkTC && !hasSignedTC(to)) revert TermsAndConditionsNotSigned(to);
-        if (enforceLock) {
-            if (!_whitelist[from]) _unlockTokens(from, value);
-            if (!_whitelist[to]) _lockTokens(to, value);
-        }
+
+        if (!_whitelist[from]) _unlockTokens(from, value, !enforceLock);
+        if (enforceLock && !_whitelist[to]) _lockTokens(to, value);
 
         HolderManagementStorage storage $ = _getHolderManagementStorage();
         if (
@@ -257,7 +257,7 @@ contract RemoraRWAToken is
         bool fromWL = _whitelist[sender];
         bool toWL = _whitelist[to];
 
-        if (!fromWL) _unlockTokens(sender, value);
+        if (!fromWL) _unlockTokens(sender, value, false);
         if (!toWL) _lockTokens(to, value);
 
         result = super.transfer(to, value);
@@ -288,7 +288,7 @@ contract RemoraRWAToken is
         bool fromWL = _whitelist[from];
         bool toWL = _whitelist[to];
 
-        if (!fromWL) _unlockTokens(from, value);
+        if (!fromWL) _unlockTokens(from, value, false);
         if (!toWL) _lockTokens(to, value);
 
         result = super.transferFrom(from, to, value);
