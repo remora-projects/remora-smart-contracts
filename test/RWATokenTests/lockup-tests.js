@@ -21,7 +21,10 @@ describe("RemoraRWAToken Lock Up Tests", function () {
 
     await expect(
       remoratoken.connect(investor1).transfer(owner.address, 10)
-    ).to.be.revertedWithCustomError(remoratoken, "CannotUnlockTokens");
+    ).to.be.revertedWithCustomError(
+      remoratoken,
+      "InsufficientTokensUnlockable"
+    );
 
     await time.increase(86400); //1 day pass
 
@@ -44,7 +47,10 @@ describe("RemoraRWAToken Lock Up Tests", function () {
     //should be able to sell 1 token only
     await expect(
       remoratoken.connect(investor1).transfer(owner.address, 2)
-    ).to.be.revertedWithCustomError(remoratoken, "CannotUnlockTokens");
+    ).to.be.revertedWithCustomError(
+      remoratoken,
+      "InsufficientTokensUnlockable"
+    );
 
     await expect(
       remoratoken.connect(investor1).transfer(owner.address, 1)
