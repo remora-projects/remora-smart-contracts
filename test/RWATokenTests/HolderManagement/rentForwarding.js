@@ -3,13 +3,13 @@ const {
 } = require("@nomicfoundation/hardhat-toolbox/network-helpers");
 const {
   deployContractsAndSetVariables,
-} = require("../helpers/setup-contracts");
+} = require("../../helpers/setup-contracts");
 const { expect } = require("chai");
 
 //Tests are WIP
-describe("RemoraRWAToken Holder Management Tests 3", function () {
+describe("RemoraRWAToken Rent Forwarding", function () {
   async function holderManagementTestsSetUp() {
-    return await deployContractsAndSetVariables(10, 0, 10000, true); //10 cent fee
+    return await deployContractsAndSetVariables(10, 0, 100000, 0, true); //10 cent fee
   }
 
   describe("Holder Management Tests, rent forwarding", function () {
@@ -61,7 +61,7 @@ describe("RemoraRWAToken Holder Management Tests 3", function () {
         ).at(0)
       ).to.equal(600000000);
 
-      expect(
+      await expect(
         await remoratoken.connect(investor2).claimPayout()
       ).to.changeTokenBalances(
         ausd,
@@ -138,7 +138,7 @@ describe("RemoraRWAToken Holder Management Tests 3", function () {
         ).at(0)
       ).to.equal(700000000);
 
-      expect(
+      await expect(
         await remoratoken.connect(investor2).claimPayout()
       ).to.changeTokenBalances(
         ausd,
@@ -196,7 +196,7 @@ describe("RemoraRWAToken Holder Management Tests 3", function () {
         ).at(0)
       ).to.equal(350000000);
 
-      expect(
+      await expect(
         await remoratoken.connect(investor2).claimPayout()
       ).to.changeTokenBalances(
         ausd,

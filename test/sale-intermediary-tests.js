@@ -3,6 +3,7 @@ const {
 } = require("@nomicfoundation/hardhat-toolbox/network-helpers");
 const { deployContractsAndSetVariables } = require("./helpers/setup-contracts");
 const {
+  setUpAccessManagerToken,
   setUpAccessManagerIntermediary,
 } = require("./helpers/access-manager-setup");
 const { ethers } = require("hardhat");
@@ -37,7 +38,7 @@ describe("Sale Intermediary Tests", function () {
     await saleIntermediary.waitForDeployment();
 
     const RMRACoin = await ethers.getContractFactory("RMRA");
-    const rmra = await RMRACoin.deploy("Remora Coin", "RMRA", 1000);
+    const rmra = await RMRACoin.deploy("Remora Coin", "RMRA", 10000);
 
     await setUpAccessManagerIntermediary(
       accessmanager,
@@ -62,6 +63,80 @@ describe("Sale Intermediary Tests", function () {
       rmra,
       accessmanager,
       saleIntermediary,
+    };
+  }
+
+  async function setUpSaleIntermediaryPayoutTests() {
+    const {
+      owner,
+      investor1,
+      investor2,
+      custodian,
+      facilitator,
+      state_changer,
+      remoratoken,
+      allowlist,
+      ausd,
+      rmra,
+      accessmanager,
+      saleIntermediary,
+    } = await setUpSaleIntermediaryTests();
+
+    const RemoraToken = await ethers.getContractFactory("RemoraRWAToken");
+    const remoratoken2 = await upgrades.deployProxy(
+      RemoraToken,
+      [
+        owner.address,
+        accessmanager.target,
+        allowlist.target,
+        ausd.target,
+        owner.address,
+        "888 Apartments",
+        "888a",
+        10,
+      ],
+      {
+        initializer: "initialize",
+        kind: "uups",
+      }
+    );
+    await remoratoken2.waitForDeployment();
+
+    await setUpAccessManagerToken(
+      accessmanager,
+      custodian,
+      facilitator,
+      state_changer,
+      remoratoken2,
+      allowlist
+    );
+
+    await setUpAccessManagerIntermediary(
+      accessmanager,
+      remoratoken2,
+      custodian,
+      saleIntermediary,
+      facilitator
+    );
+
+    await remoratoken2.connect(custodian).signTC(owner.address);
+    await remoratoken2.connect(custodian).signTC(investor1.address);
+    await remoratoken2.connect(custodian).setPayoutFee(10000);
+
+    return {
+      owner,
+      investor1,
+      investor2,
+      custodian,
+      facilitator,
+      state_changer,
+      remoratoken,
+      allowlist,
+      ausd,
+      rmra,
+      accessmanager,
+      saleIntermediary,
+      remoratoken2,
     };
   }
 
@@ -322,6 +397,100 @@ describe("Sale Intermediary Tests", function () {
         [investor1, owner],
         [-1000, +1000]
       );
+    });
+  });
+
+  describe("Claim Payout Tests", function () {
+    it("Should allow claim of all tokens a user owns in stablecoin", async function () {
+      const {
+        owner,
+        investor1,
+        remoratoken,
+        remoratoken2,
+        custodian,
+        facilitator,
+        allowlist,
+        ausd,
+        saleIntermediary,
+      } = await loadFixture(setUpSaleIntermediaryPayoutTests);
+      //send stablecoin to payout contract ($1000)
+      await ausd.transfer(remoratoken.target, 1000000000);
+      await ausd.transfer(remoratoken2.target, 1000000000);
+
+      await allowlist.connect(custodian).allowUser(owner);
+      await allowlist.connect(custodian).allowUser(investor1);
+
+      await remoratoken.transfer(investor1.address, 5); //out of 10 tokens
+      await remoratoken2.transfer(investor1.address, 5); // out of 10
+
+      //distribute $1000
+      // 10 cent fee
+      await remoratoken.connect(facilitator).distributePayout(1000000000);
+      await remoratoken2.connect(facilitator).distributePayout(1000000000);
+
+      const rwaAddrs = [remoratoken.target, remoratoken2.target];
+      const payoutStruct = {
+        useStablecoin: true,
+        useCustomFee: false,
+        holder: investor1.address,
+        paymentToken: ethers.ZeroAddress,
+        feeValue: 0,
+        amount: 0,
+        rwaTokens: rwaAddrs,
+      };
+
+      10000;
+      const tx = saleIntermediary.connect(facilitator).payoutAll(payoutStruct);
+      await expect(await tx).to.changeTokenBalances(
+        ausd,
+        [remoratoken, investor1],
+        [-499990000, +999980000]
+      );
+      await expect(await tx).to.changeTokenBalances(
+        ausd,
+        [remoratoken2, investor1],
+        [-499990000, +999980000]
+      );
+    });
+
+    it("Should allow claim of all tokens a user owns in RMRA", async function () {
+      const {
+        owner,
+        investor1,
+        remoratoken,
+        remoratoken2,
+        custodian,
+        facilitator,
+        allowlist,
+        rmra,
+        saleIntermediary,
+      } = await loadFixture(setUpSaleIntermediaryPayoutTests);
+      await rmra.approve(saleIntermediary, 1000);
+
+      await allowlist.connect(custodian).allowUser(owner);
+      await allowlist.connect(custodian).allowUser(investor1);
+
+      await remoratoken.transfer(investor1.address, 5);
+      await remoratoken2.transfer(investor1.address, 5);
+
+      //distribute $1000
+      await remoratoken.connect(facilitator).distributePayout(1000);
+      await remoratoken2.connect(facilitator).distributePayout(1000);
+
+      const rwaAddrs = [remoratoken.target, remoratoken2.target];
+      const payoutStruct = {
+        useStablecoin: false,
+        useCustomFee: true,
+        holder: investor1.address,
+        paymentToken: rmra.target,
+        feeValue: 0,
+        amount: 1000,
+        rwaTokens: rwaAddrs,
+      };
+
+      await expect(
+        await saleIntermediary.connect(facilitator).payoutAll(payoutStruct)
+      ).to.changeTokenBalances(rmra, [owner, investor1], [-1000, +1000]);
     });
   });
 });

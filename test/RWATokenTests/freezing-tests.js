@@ -48,7 +48,7 @@ describe("RemoraRWAToken", function () {
       await accessmanager.grantRole(FACILITATOR_ID, owner, 0);
       await accessmanager.grantRole(CUSTODIAN_ID, owner, 0);
       await allowlist.allowUser(investor1);
-      await remoratoken.setPayoutFee(10000);
+      await remoratoken.setPayoutFee(100000); //10 cents
 
       //send stablecoin to payout contract ($1000)
       await ausd.transfer(remoratoken.target, 10000000000);
@@ -84,13 +84,13 @@ describe("RemoraRWAToken", function () {
       ).to.equal(400000000); //$400
       await remoratoken.payoutBalance(owner.address);
 
-      expect(
+      await expect(
         await remoratoken.connect(investor1).claimPayout()
       ).to.changeTokenBalances(
         ausd,
         [remoratoken, investor1],
-        [-360000000, +360000000]
-      ); // $360 claimed with fee
+        [-399900000, +399900000]
+      ); // $399.90 claimed with fee
 
       expect(
         (
@@ -110,7 +110,7 @@ describe("RemoraRWAToken", function () {
       await accessmanager.grantRole(FACILITATOR_ID, owner, 0);
       await accessmanager.grantRole(CUSTODIAN_ID, owner, 0);
       await allowlist.allowUser(investor1);
-      await remoratoken.setPayoutFee(10000);
+      await remoratoken.setPayoutFee(100000);
 
       //send stablecoin to payout contract ($1000)
       await ausd.transfer(remoratoken.target, 10000000000);
@@ -146,13 +146,13 @@ describe("RemoraRWAToken", function () {
       //rent payout balance
       await checkPayouts(remoratoken, investors, amounts);
 
-      expect(
+      await expect(
         await remoratoken.connect(investor1).claimPayout()
       ).to.changeTokenBalances(
         ausd,
         [remoratoken, investor1],
-        [-90000000, +90000000]
-      ); // $90 claimed with fee
+        [-99900000, +99900000]
+      ); // $99.90 claimed with fee
       amounts[1] = BigInt(0);
 
       await checkPayouts(remoratoken, investors, amounts);
@@ -162,13 +162,13 @@ describe("RemoraRWAToken", function () {
       //frozen funds should be unfrozen and claimable
       await checkPayouts(remoratoken, investors, amounts);
 
-      expect(
+      await expect(
         await remoratoken.connect(investor1).claimPayout()
       ).to.changeTokenBalances(
         ausd,
         [remoratoken, investor1],
-        [-90000000, +90000000]
-      ); // $90 claimed with fee
+        [-99900000, +99900000]
+      ); // $99.90 claimed with fee
     });
 
     it("Should revoke frozen user's token after 30 days + revoke TC signature", async function () {

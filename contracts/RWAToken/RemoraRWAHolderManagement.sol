@@ -337,7 +337,7 @@ abstract contract RemoraRWAHolderManagement is
         address holder,
         bool useStablecoin,
         bool useCustomFee,
-        uint256 feeValue
+        uint256 feeValue // AUDIT: doesn't need to be this big, would it be worth making it smaller? to uint32
     ) internal {
         HolderManagementStorage storage $ = _getHolderManagementStorage();
         uint256 payoutAmount = payoutBalance(holder);

@@ -52,6 +52,9 @@ async function setUpAccessManagerToken(
     getSelector("distributePayout(uint128)"),
     getSelector("adminClaimPayout(address,bool,bool,uint256)"),
     getSelector("adminTransferFrom(address,address,uint256,bool,bool)"),
+    getSelector(
+      "payoutAll((bool,bool,address,address,uint32,uint128,address[]))"
+    ),
     getSelector("burnFrom(address,uint256)"),
   ];
 
@@ -112,13 +115,14 @@ async function setUpAccessManagerIntermediary( // only call after setting up tok
 
   const facilitator_selectors = [
     getSelector(
-      "swapTokens((address,address,address,address,address,bool,uint128,uint128,uint128))"
+      "swapTokens((address,address,address,address,address,bool,uint32,uint128,uint128))"
     ),
     getSelector(
-      "processRwaSale((address,address,address,address,address,bool,uint128,uint128,uint128))"
+      "processRwaSale((address,address,address,address,address,bool,uint32,uint128,uint128))"
     ),
+    getSelector("processPayout((address,address,address,bool,uint32,uint128))"),
     getSelector(
-      "processPayout((address,address,address,bool,uint128,uint128))"
+      "payoutAll((bool,bool,address,address,uint32,uint128,address[]))"
     ),
   ];
 

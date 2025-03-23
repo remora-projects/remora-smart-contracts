@@ -3,24 +3,24 @@ const {
 } = require("@nomicfoundation/hardhat-toolbox/network-helpers");
 const {
   deployContractsAndSetVariables,
-} = require("../helpers/setup-contracts");
+} = require("../../helpers/setup-contracts");
 const {
   CUSTODIAN_ID,
   FACILITATOR_ID,
-} = require("../helpers/access-manager-setup");
+} = require("../../helpers/access-manager-setup");
 const {
   payAndCalculate,
   checkPayouts,
-} = require("../helpers/holder-management-helper");
+} = require("../../helpers/holder-management-helper");
 const { expect } = require("chai");
 
 describe("RemoraRWAToken Holder Management Tests 2", function () {
   async function holderManagementTestsSetUp() {
-    return await deployContractsAndSetVariables(10, 0, 10000, 0, true); //10% fee
+    return await deployContractsAndSetVariables(10, 0, 100000, 0, true); //.01 cent fee
   }
 
   describe("Holder Management Tests, claims + fee", function () {
-    it("Should distribute payouts correctly with Fee, plus withdraw to wallet", async function () {
+    it("Should distribute payouts correctly with fee, plus withdraw to wallet", async function () {
       const { owner, investor1, remoratoken, accessmanager, allowlist, ausd } =
         await loadFixture(holderManagementTestsSetUp);
 
@@ -49,20 +49,20 @@ describe("RemoraRWAToken Holder Management Tests 2", function () {
       await checkPayouts(remoratoken, investors, amounts);
 
       //investor claims payout with fee
-      expect(
+      await expect(
         await remoratoken.connect(investor1).claimPayout()
       ).to.changeTokenBalances(
         ausd,
         [remoratoken, investor1],
-        [-90000000, +90000000]
-      ); // +- $90
+        [-99900000, +99900000]
+      ); // +- $99.90
       expect(
         (
           await remoratoken.payoutBalance.staticCallResult(investor1.address)
         ).at(0)
       ).to.equal(0);
 
-      //owner claims rent, no fee
+      //owner claims rent, with fee
       await remoratoken.claimPayout();
       expect(
         (await remoratoken.payoutBalance.staticCallResult(owner.address)).at(0)
@@ -70,10 +70,10 @@ describe("RemoraRWAToken Holder Management Tests 2", function () {
       await remoratoken.payoutBalance(owner.address);
 
       //withdraw stablecoin from contract
-      expect(await remoratoken.withdraw(true, 0)).to.changeTokenBalances(
+      await expect(await remoratoken.withdraw(true, 0)).to.changeTokenBalances(
         ausd,
         [remoratoken, owner],
-        [-910000000, +910000000]
+        [-200000, +200000]
       );
     });
 
@@ -107,15 +107,15 @@ describe("RemoraRWAToken Holder Management Tests 2", function () {
       await checkPayouts(remoratoken, investors, amounts);
 
       //investor claims rent with fee
-      expect(
+      await expect(
         await remoratoken.connect(investor1).claimPayout()
       ).to.changeTokenBalances(
         ausd,
         [remoratoken, investor1],
-        [-90000000, +90000000]
-      ); // +- $90
+        [-99900000, +99900000]
+      ); // +- $99.90
 
-      await remoratoken.setPayoutFee(20000); //20% fee
+      await remoratoken.setPayoutFee(200000); // 20 cents
 
       // Call distributePayout ($1000)
       await payAndCalculate(
@@ -130,15 +130,15 @@ describe("RemoraRWAToken Holder Management Tests 2", function () {
       await checkPayouts(remoratoken, investors, amounts);
 
       //investor claims rent with new fee
-      expect(
+      await expect(
         await remoratoken.connect(investor1).claimPayout()
       ).to.changeTokenBalances(
         ausd,
         [remoratoken, investor1],
-        [-80000000, +80000000]
-      ); // +- $80
+        [-99800000, +99800000]
+      ); // +- $99.80
 
-      //owner claims rent, no fee
+      //owner claims rent
       await remoratoken.claimPayout();
       expect(
         (await remoratoken.payoutBalance.staticCallResult(owner.address)).at(0)
@@ -146,10 +146,10 @@ describe("RemoraRWAToken Holder Management Tests 2", function () {
       await remoratoken.payoutBalance(owner.address);
 
       //withdraw stablecoin from contract
-      expect(await remoratoken.withdraw(true, 0)).to.changeTokenBalances(
+      await expect(await remoratoken.withdraw(true, 0)).to.changeTokenBalances(
         ausd,
         [remoratoken, owner],
-        [-1830000000, +1830000000]
+        [-500000, +500000] //$.50 cents from the fees
       );
     });
 

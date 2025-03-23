@@ -4,8 +4,6 @@ const {
 const {
   deployContractsAndSetVariables,
 } = require("../helpers/setup-contracts");
-const { CUSTODIAN_ID } = require("../helpers/access-manager-setup");
-const { ethers, upgrades } = require("hardhat");
 const { expect } = require("chai");
 
 describe("RemoraRWAToken Tests", function () {

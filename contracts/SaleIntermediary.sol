@@ -2,6 +2,7 @@
 pragma solidity ^0.8.22;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {AccessManaged} from "@openzeppelin/contracts/access/manager/AccessManaged.sol";
 
@@ -37,9 +38,9 @@ contract RemoraSaleIntermediary is AccessManaged, ReentrancyGuard {
      * @param assetReceived The token the buyer is providing.
      * @param feeToken The address of the token to be used to pay the fee.
      * @param hasSellerFee Boolean flag for fees.
+     * @param feeAmount The amount in tokens of the fee.
      * @param assetSoldAmount The amount of the token the seller is selling.
      * @param assetReceivedAmount The amount of the token the buyer is paying.
-     * @param feeAmount The amount in tokens of the fee.
      */
     struct TradeData {
         address seller;
@@ -48,9 +49,9 @@ contract RemoraSaleIntermediary is AccessManaged, ReentrancyGuard {
         address assetReceived;
         address feeToken;
         bool hasSellerFee;
+        uint32 feeAmount;
         uint128 assetSoldAmount;
         uint128 assetReceivedAmount;
-        uint128 feeAmount;
     }
 
     /**
@@ -58,8 +59,8 @@ contract RemoraSaleIntermediary is AccessManaged, ReentrancyGuard {
      * @param rwaToken The address of the RWA Token that the holder is collecting payout from.
      * @param paymentToken The address of the ERC20 token that the holder will be paid out in.
      * @param useCustomFee A value indicating whether or not to use a custom fee when user is claiming payout.
-     * @param paymentTokenAmount The amount of the payment token the holder will recieve.
      * @param feeValue The value of the fee, used to calculate proper amount for the event emitted in adminClaimPayout.
+     * @param paymentTokenAmount The amount of the payment token the holder will recieve.
      * ^ feeValue must always be in USD (6 decimals)
      */
     struct PayoutData {
@@ -67,8 +68,27 @@ contract RemoraSaleIntermediary is AccessManaged, ReentrancyGuard {
         address rwaToken;
         address paymentToken;
         bool useCustomFee;
+        uint32 feeValue;
         uint128 paymentTokenAmount;
-        uint128 feeValue;
+    }
+
+    /**
+     * @param useStablecoin Whether or not the holder is being paid in stablecoin (will be sent from the RWA token contract itself)
+     * @param useCustomFee Whether or not custom fee is being used (only matters if useStablecoin is true)
+     * @param holder Address of the holder claiming the rent
+     * @param paymentToken Address of the token to be paid out in
+     * @param feeValue The custom fee value to be used in USD (6 decimals), only used if useStablecoin and useCustomFee are both true
+     * @param amount The amount of paymentToken to be paid if not being paid out in stablecoin
+     * @param rwaTokens An array containing the addresses of the RWAtokens that the holder is claiming rent for
+     */
+    struct PayoutAllData {
+        bool useStablecoin;
+        bool useCustomFee;
+        address holder;
+        address paymentToken; //address of token to be paid in
+        uint32 feeValue; //can be reduced to save space
+        uint128 amount;
+        address[] rwaTokens; //addresses of tokens to claim
     }
 
     /**
@@ -202,6 +222,37 @@ contract RemoraSaleIntermediary is AccessManaged, ReentrancyGuard {
             holder,
             data.paymentTokenAmount
         );
+    }
+
+    /**
+     * @notice Calls adminPayoutClaim from RWAToken contract and pays out the holder on all tokens they own.
+     * @param data The struct containing the data for the function.
+     */
+    function payoutAll(
+        PayoutAllData calldata data
+    ) external restricted nonReentrant {
+        bool useCustomFee = data.useCustomFee;
+        bool useStablecoin = data.useStablecoin;
+        uint32 feeValue = SafeCast.toUint32(data.feeValue);
+        address holder = data.holder;
+        uint256 len = data.rwaTokens.length; // AUDIT: efficient to have this at 256?
+
+        for (uint256 i = 0; i < len; ++i) {
+            IRwaToken(data.rwaTokens[i]).adminClaimPayout(
+                holder,
+                useStablecoin,
+                useCustomFee,
+                feeValue
+            );
+        }
+
+        if (!useStablecoin) {
+            IERC20(data.paymentToken).transferFrom(
+                _fundingWallet,
+                holder,
+                data.amount
+            );
+        }
     }
 
     /**

@@ -3,12 +3,12 @@ const {
 } = require("@nomicfoundation/hardhat-toolbox/network-helpers");
 const {
   deployContractsAndSetVariables,
-} = require("../helpers/setup-contracts");
-const { allowUsers } = require("../helpers/access-manager-setup");
+} = require("../../helpers/setup-contracts");
+const { allowUsers } = require("../../helpers/access-manager-setup");
 const {
   checkPayouts,
   payAndCalculate,
-} = require("../helpers/holder-management-helper");
+} = require("../../helpers/holder-management-helper");
 const { expect } = require("chai");
 
 describe("RemoraRWAToken Holder Management Tests 1", function () {
@@ -184,7 +184,7 @@ describe("RemoraRWAToken Holder Management Tests 1", function () {
         totalSupply
       );
 
-      expect(
+      await expect(
         await remoratoken.connect(investor1).claimPayout()
       ).to.changeTokenBalances(
         ausd,
@@ -236,7 +236,7 @@ describe("RemoraRWAToken Holder Management Tests 1", function () {
       await remoratoken.connect(facilitator).distributePayout(1000000000);
       await remoratoken.connect(facilitator).distributePayout(1000000000);
 
-      expect(
+      await expect(
         await remoratoken.connect(investor1).claimPayout()
       ).to.changeTokenBalances(
         ausd,
@@ -260,7 +260,7 @@ describe("RemoraRWAToken Holder Management Tests 1", function () {
       //send $10,000 to the contract
       await ausd.transfer(remoratoken.target, 10000000000);
 
-      //investor 1 has 2 tokens enters at init, 0
+      //investor 1 has 4 tokens enters at init, 0
       await remoratoken.transfer(investor1.address, 4);
 
       //first payout
@@ -269,12 +269,12 @@ describe("RemoraRWAToken Holder Management Tests 1", function () {
       await remoratoken.connect(facilitator).distributePayout(1000000000);
       await remoratoken.connect(facilitator).distributePayout(1000000000);
 
-      expect(
+      await expect(
         await remoratoken.connect(investor1).claimPayout()
       ).to.changeTokenBalances(
         ausd,
         [remoratoken, investor1],
-        [-2000000000, +2000000000]
+        [-1600000000, +1600000000]
       );
     });
 
