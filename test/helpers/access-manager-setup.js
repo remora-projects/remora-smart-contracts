@@ -52,9 +52,6 @@ async function setUpAccessManagerToken(
     getSelector("distributePayout(uint128)"),
     getSelector("adminClaimPayout(address,bool,bool,uint256)"),
     getSelector("adminTransferFrom(address,address,uint256,bool,bool)"),
-    getSelector(
-      "payoutAll((bool,bool,address,address,uint32,uint128,address[]))"
-    ),
     getSelector("burnFrom(address,uint256)"),
   ];
 

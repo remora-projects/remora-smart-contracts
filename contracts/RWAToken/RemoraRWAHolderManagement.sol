@@ -192,26 +192,44 @@ abstract contract RemoraRWAHolderManagement is
         address holder,
         address forwardingAddress
     ) external restricted {
-        //should I add an event for this?
         HolderManagementStorage storage $ = _getHolderManagementStorage();
-        payoutBalance(holder); // call so any previous rent is kept by the holder
-        $._holderStatus[holder].forwardPayoutTo = forwardingAddress;
-        $._holderStatus[forwardingAddress].forwardedPayouts.push(holder);
+        address curForwardAddr = $._holderStatus[holder].forwardPayoutTo;
+        if (curForwardAddr != forwardingAddress) {
+            _removePayoutForwardAddress($, holder, curForwardAddr);
+            payoutBalance(holder); // call so any previous rent is kept by the holder
+            $._holderStatus[holder].forwardPayoutTo = forwardingAddress;
+            $._holderStatus[forwardingAddress].forwardedPayouts.push(holder);
+        }
     }
 
     /**
      * @notice Removes rent forwarding
-     * @dev Each holder only forwards to one account
+     * @dev Each holder only forwards to one account, external function with restriction
      * @param holder The holder whose payouts should no longer be forwarded
      */
     function removePayoutForwardAddress(address holder) external restricted {
         HolderManagementStorage storage $ = _getHolderManagementStorage();
+        _removePayoutForwardAddress(
+            $,
+            holder,
+            $._holderStatus[holder].forwardPayoutTo
+        );
+    }
 
-        HolderStatus storage holderStatus = $._holderStatus[holder];
-        address forwardedAddress = holderStatus.forwardPayoutTo;
+    /**
+     * @notice Removes rent forwarding
+     * @dev Each holder only forwards to one account, internal function without restriction
+     * @param $ contract storage
+     * @param holder The holder whose payouts should no longer be forwarded
+     */
+    function _removePayoutForwardAddress(
+        HolderManagementStorage storage $,
+        address holder,
+        address forwardedAddress
+    ) internal {
         if (forwardedAddress != address(0)) {
-            payoutBalance(holder); // call so any uncalculated rent is given to forwarding address
-            holderStatus.forwardPayoutTo = address(0);
+            uint256 holderPayout = payoutBalance(holder); // call so any uncalculated rent is given to forwarding address
+            $._holderStatus[holder].forwardPayoutTo = address(0);
 
             HolderStatus storage forwardedHolder = $._holderStatus[
                 forwardedAddress
@@ -227,6 +245,16 @@ abstract contract RemoraRWAHolderManagement is
                 }
             }
             forwardedHolder.forwardedPayouts.pop();
+
+            if (balanceOf(holder) == 0 && holderPayout == 0) {
+                deleteUser($, $._holderStatus[holder], holder);
+            }
+            if (
+                balanceOf(forwardedAddress) == 0 &&
+                payoutBalance(forwardedAddress) == 0
+            ) {
+                deleteUser($, forwardedHolder, forwardedAddress);
+            }
         }
     }
 
@@ -346,13 +374,7 @@ abstract contract RemoraRWAHolderManagement is
 
         HolderStatus storage holderStatus = $._holderStatus[holder];
         if (balanceOf(holder) == 0) {
-            // if user is not a holder after claiming payout, delete their data
-            //unless they are frozen
-            bool signed = (holderStatus.isFrozen)
-                ? false
-                : holderStatus.signedTC;
-            delete $._holderStatus[holder];
-            holderStatus.signedTC = signed;
+            deleteUser($, holderStatus, holder);
         } else {
             // else, update their data reflecting the recent claim
             holderStatus.lastPayoutIndexCalculated = holderStatus.isFrozen
@@ -526,13 +548,7 @@ abstract contract RemoraRWAHolderManagement is
             uint256 fromBalance = balanceOf(from);
             HolderStatus storage fromHolderStatus = $._holderStatus[from];
             if (fromBalance == 0 && payoutBalance(from) == 0) {
-                //saving old value in case sent tokens with adminTransferFrom without checkTC
-                //unless they are frozen
-                bool signed = (fromHolderStatus.isFrozen)
-                    ? false
-                    : fromHolderStatus.signedTC;
-                delete $._holderStatus[from];
-                fromHolderStatus.signedTC = signed;
+                deleteUser($, fromHolderStatus, from);
                 return;
             }
             if (fromHolderStatus.mostRecentEntry == payoutIndex) {
@@ -547,6 +563,32 @@ abstract contract RemoraRWAHolderManagement is
                 });
             }
         }
+    }
+
+    function deleteUser(
+        HolderManagementStorage storage $,
+        HolderStatus storage holderStatus,
+        address holder
+    ) internal {
+        bool signed = (holderStatus.isFrozen) ? false : holderStatus.signedTC;
+
+        if (
+            holderStatus.forwardPayoutTo != address(0) ||
+            holderStatus.forwardedPayouts.length != 0
+        ) {
+            // don't delete everything
+            holderStatus.isFrozen = false;
+            holderStatus.isCalculated = false;
+            holderStatus.isHolder = false;
+            holderStatus.frozenIndex = 0;
+            holderStatus.lastPayoutIndexCalculated = 0;
+            holderStatus.mostRecentEntry = 0;
+            holderStatus.frozenTimestamp = 0;
+            holderStatus.calculatedPayout = 0;
+        } else {
+            delete $._holderStatus[holder];
+        }
+        holderStatus.signedTC = signed;
     }
 
     /**
