@@ -2,7 +2,7 @@
 // Compatible with OpenZeppelin Contracts ^5.0.0
 pragma solidity ^0.8.22;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20} from "../IERC20.sol";
 import {RemoraRWABurnable} from "./RemoraRWABurnable.sol";
 import {RemoraRWALockUp} from "./RemoraRWALockUp.sol";
 import {RemoraRWAHolderManagement} from "./RemoraRWAHolderManagement.sol";
@@ -262,10 +262,15 @@ contract RemoraRWAToken is
 
         result = super.transfer(to, value);
 
-        uint32 _transferFee = transferFee;
+        uint256 _transferFee = transferFee;
         if (_transferFee != 0 && !fromWL && !toWL) {
             HolderManagementStorage storage $ = _getHolderManagementStorage();
-            $._stablecoin.transferFrom(sender, $._wallet, _transferFee);
+            IERC20 stablecoin = $._stablecoin;
+            uint8 numDecimals = stablecoin.decimals();
+            if (numDecimals != 6) {
+                _transferFee *= 10 ** (numDecimals - 6);
+            }
+            stablecoin.transferFrom(sender, $._wallet, _transferFee);
         }
     }
 
@@ -293,10 +298,15 @@ contract RemoraRWAToken is
 
         result = super.transferFrom(from, to, value);
 
-        uint32 _transferFee = transferFee;
+        uint256 _transferFee = transferFee;
         if (_transferFee != 0 && !_whitelist[sender] && !fromWL && !toWL) {
             HolderManagementStorage storage $ = _getHolderManagementStorage();
-            $._stablecoin.transferFrom(sender, $._wallet, _transferFee);
+            IERC20 stablecoin = $._stablecoin;
+            uint8 numDecimals = stablecoin.decimals();
+            if (numDecimals != 6) {
+                _transferFee *= 10 ** (numDecimals - 6);
+            }
+            stablecoin.transferFrom(sender, $._wallet, _transferFee);
         }
     }
 
@@ -319,6 +329,10 @@ contract RemoraRWAToken is
             revert InsufficentStablecoinBalance();
         }
 
+        uint8 numDecimals = stablecoin.decimals();
+        if (numDecimals != 6) {
+            burnPayout *= 10 ** (numDecimals - 6);
+        }
         stablecoin.transfer(sender, burnPayout);
     }
 

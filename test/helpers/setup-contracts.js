@@ -72,7 +72,7 @@ async function setUpAndDeployContracts(
 ) {
   //set up stablecoin
   const AUSD = await ethers.getContractFactory("Stablecoin");
-  const ausd = await AUSD.deploy("AUSD", "AUSD", 10000000000);
+  const ausd = await AUSD.deploy("AUSD", "AUSD", 10000000000, 6);
 
   //set up access manager
   const AccessManager = await ethers.getContractFactory("RemoraManager");

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20} from "../IERC20.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
@@ -252,9 +252,7 @@ abstract contract RemoraRWAHolderManagement is
             if (
                 balanceOf(forwardedAddress) == 0 &&
                 payoutBalance(forwardedAddress) == 0
-            ) {
-                deleteUser($, forwardedHolder, forwardedAddress);
-            }
+            ) deleteUser($, forwardedHolder, forwardedAddress);
         }
     }
 
@@ -391,6 +389,11 @@ abstract contract RemoraRWAHolderManagement is
             //If the user decides to be paid out in the stable coin
             IERC20 stablecoin = $._stablecoin;
             uint256 stablecoinBalance = stablecoin.balanceOf(address(this));
+
+            uint8 numDecimals = stablecoin.decimals();
+            if (numDecimals != 6) {
+                payoutAmount *= 10 ** (numDecimals - 6);
+            }
 
             if (payoutAmount > stablecoinBalance) {
                 revert InsufficentStablecoinBalance();
@@ -565,32 +568,6 @@ abstract contract RemoraRWAHolderManagement is
         }
     }
 
-    function deleteUser(
-        HolderManagementStorage storage $,
-        HolderStatus storage holderStatus,
-        address holder
-    ) internal {
-        bool signed = (holderStatus.isFrozen) ? false : holderStatus.signedTC;
-
-        if (
-            holderStatus.forwardPayoutTo != address(0) ||
-            holderStatus.forwardedPayouts.length != 0
-        ) {
-            // don't delete everything
-            holderStatus.isFrozen = false;
-            holderStatus.isCalculated = false;
-            holderStatus.isHolder = false;
-            holderStatus.frozenIndex = 0;
-            holderStatus.lastPayoutIndexCalculated = 0;
-            holderStatus.mostRecentEntry = 0;
-            holderStatus.frozenTimestamp = 0;
-            holderStatus.calculatedPayout = 0;
-        } else {
-            delete $._holderStatus[holder];
-        }
-        holderStatus.signedTC = signed;
-    }
-
     /**
      * @dev Internal function to retrieve the PayOut storage struct.
      * @return $ The storage reference for PayOutStorage.
@@ -603,5 +580,36 @@ abstract contract RemoraRWAHolderManagement is
         assembly {
             $.slot := HolderManagementStorageLocation
         }
+    }
+
+    /**
+     * @dev Private function that deletes the data of a user when it is no longer needed.
+     * @param $ Storage variable, sent in so that the holder can be fully deleted.
+     * @param holderStatus The holder's HolderStatus struct.
+     * @param holder The address of the holder to be deleted.
+     */
+    function deleteUser(
+        HolderManagementStorage storage $,
+        HolderStatus storage holderStatus,
+        address holder
+    ) private {
+        bool signed = (holderStatus.isFrozen) ? false : holderStatus.signedTC;
+
+        if (
+            holderStatus.forwardPayoutTo != address(0) ||
+            holderStatus.forwardedPayouts.length != 0
+        ) {
+            holderStatus.isFrozen = false;
+            holderStatus.isCalculated = false;
+            holderStatus.isHolder = false;
+            holderStatus.frozenIndex = 0;
+            holderStatus.lastPayoutIndexCalculated = 0;
+            holderStatus.mostRecentEntry = 0;
+            holderStatus.frozenTimestamp = 0;
+            holderStatus.calculatedPayout = 0;
+        } else {
+            delete $._holderStatus[holder];
+        }
+        holderStatus.signedTC = signed;
     }
 }

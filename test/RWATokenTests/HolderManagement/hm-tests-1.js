@@ -448,5 +448,48 @@ describe("RemoraRWAToken Holder Management Tests 1", function () {
       await remoratoken.transfer(investor4.address, 1);
       await checkPayouts(remoratoken, investors, amounts);
     });
+
+    it("Should correctly claim rent after not claiming a payout, selling all tokens, missing payouts in between and then rebuying.", async function () {
+      const {
+        owner,
+        investor1,
+        custodian,
+        facilitator,
+        remoratoken,
+        allowlist,
+        ausd,
+      } = await loadFixture(holderManagementTestsSetUp);
+
+      await allowlist.connect(custodian).allowUser(investor1.address);
+
+      //send $10,000 to the contract
+      await ausd.transfer(remoratoken.target, 10000000000);
+
+      //investor 1 has 2 tokens enters at init, 0
+      await remoratoken.transfer(investor1.address, 2);
+
+      //first payout
+      await remoratoken.connect(facilitator).distributePayout(1000000000);
+      await remoratoken.connect(facilitator).distributePayout(1000000000);
+
+      //investor has no more tokens
+      await remoratoken.connect(investor1).transfer(owner.address, 2);
+
+      await remoratoken.connect(facilitator).distributePayout(1000000000);
+      await remoratoken.connect(facilitator).distributePayout(1000000000);
+      await remoratoken.connect(facilitator).distributePayout(1000000000);
+
+      //investor has tokens again
+      await remoratoken.transfer(investor1, 2);
+      await remoratoken.connect(facilitator).distributePayout(1000000000);
+
+      await expect(
+        await remoratoken.connect(investor1).claimPayout()
+      ).to.changeTokenBalances(
+        ausd,
+        [remoratoken, investor1],
+        [-600000000, +600000000]
+      );
+    });
   });
 });

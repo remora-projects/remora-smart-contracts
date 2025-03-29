@@ -217,5 +217,73 @@ describe("RemoraRWAToken Holder Management Tests 2", function () {
         remoratoken.connect(investor1).claimPayout()
       ).to.be.revertedWithCustomError(remoratoken, "NoPayoutToClaim");
     });
+
+    it("Should distribute payouts correctly with fee, plus withdraw to wallet (12 decimals)", async function () {
+      const {
+        owner,
+        investor1,
+        custodian,
+        remoratoken,
+        accessmanager,
+        allowlist,
+      } = await loadFixture(holderManagementTestsSetUp);
+
+      const AUSD = await ethers.getContractFactory("Stablecoin");
+      const ausd = await AUSD.deploy("AUSD", "AUSD", 1000000000000000, 12);
+
+      await remoratoken.connect(custodian).changeStablecoin(ausd.target);
+
+      const investors = [owner, investor1];
+      const amounts = [BigInt(0), BigInt(0)];
+      const totalSupply = await remoratoken.totalSupply();
+
+      await accessmanager.grantRole(FACILITATOR_ID, owner, 0);
+      await accessmanager.grantRole(CUSTODIAN_ID, owner, 0);
+      await allowlist.allowUser(investor1);
+
+      //send stablecoin to payout contract ($1000)
+      await ausd.transfer(remoratoken.target, 1000000000000000);
+
+      await remoratoken.transfer(investor1.address, 1);
+
+      // Call distributePayout ($1000)
+      await payAndCalculate(
+        remoratoken,
+        owner,
+        investors,
+        amounts,
+        1000000000,
+        totalSupply
+      );
+      await checkPayouts(remoratoken, investors, amounts);
+
+      //investor claims payout with fee
+      await expect(
+        await remoratoken.connect(investor1).claimPayout()
+      ).to.changeTokenBalances(
+        ausd,
+        [remoratoken, investor1],
+        [-99900000000000, +99900000000000]
+      ); // +- $99.90
+      expect(
+        (
+          await remoratoken.payoutBalance.staticCallResult(investor1.address)
+        ).at(0)
+      ).to.equal(0);
+
+      //owner claims rent, with fee
+      await remoratoken.claimPayout();
+      expect(
+        (await remoratoken.payoutBalance.staticCallResult(owner.address)).at(0)
+      ).to.equal(0);
+      await remoratoken.payoutBalance(owner.address);
+
+      //withdraw stablecoin from contract
+      await expect(await remoratoken.withdraw(true, 0)).to.changeTokenBalances(
+        ausd,
+        [remoratoken, owner],
+        [-200000000000, +200000000000]
+      );
+    });
   });
 });

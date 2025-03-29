@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol"; // AUDIT: should I use the IERC20 that I made?
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {AccessManaged} from "@openzeppelin/contracts/access/manager/AccessManaged.sol";
@@ -281,6 +281,9 @@ contract RemoraSaleIntermediary is AccessManaged, ReentrancyGuard {
         );
     }
 
+    /**
+     * @dev Internal function to check for invalid addresses
+     */
     function _validateAddresses(
         address a,
         address b,
@@ -295,6 +298,9 @@ contract RemoraSaleIntermediary is AccessManaged, ReentrancyGuard {
         ) revert InvalidAddress();
     }
 
+    /**
+     * @dev Internal function that charges the payer a fee
+     */
     function _chargeFee(
         address payer,
         address recipient,

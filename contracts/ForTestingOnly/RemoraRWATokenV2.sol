@@ -2,7 +2,7 @@
 // Compatible with OpenZeppelin Contracts ^5.0.0
 pragma solidity ^0.8.22;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20} from "../IERC20.sol";
 import {RemoraRWABurnable} from "../RWAToken/RemoraRWABurnable.sol";
 import {RemoraRWAHolderManagement} from "../RWAToken/RemoraRWAHolderManagement.sol";
 import {ERC20PermitUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PermitUpgradeable.sol";
