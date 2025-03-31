@@ -19,7 +19,7 @@ import {ReentrancyGuardTransientUpgradeable} from "@openzeppelin/contracts-upgra
 abstract contract RemoraRWAHolderManagement is
     Initializable,
     ReentrancyGuardTransientUpgradeable,
-    ContextUpgradeable, // AUDIT: do I need this?
+    ContextUpgradeable,
     AccessManagedUpgradeable,
     ERC20Upgradeable
 {
@@ -65,6 +65,8 @@ abstract contract RemoraRWAHolderManagement is
         address _wallet;
         /// @dev The IERC20 stablecoin used for facilitating payouts.
         IERC20 _stablecoin;
+        /// @dev The decimals for the stablecoin
+        uint8 _stablecoinDecimals;
         /// @dev The fixed fee deducted from payouts, in USD, represented with 6 decimals.
         uint32 _payoutFee;
         /// @dev The current index that is yet to be paid out.
@@ -136,6 +138,9 @@ abstract contract RemoraRWAHolderManagement is
     /// @notice Error indicating that a user has not signed the terms and conditions.
     error TermsAndConditionsNotSigned(address holder);
 
+    /// @notice Error indicating that an invalid stablecoin decimal value was entered.
+    error InvalidStablecoinDecimalValue();
+
     /// @notice Error indicating that a function was called with an invalid address.
     error InvalidAddress();
 
@@ -175,8 +180,10 @@ abstract contract RemoraRWAHolderManagement is
         uint32 _payoutFee
     ) internal onlyInitializing {
         HolderManagementStorage storage $ = _getHolderManagementStorage();
-        $._stablecoin = IERC20(_stablecoin);
         $._wallet = _wallet;
+        IERC20 stablecoin = IERC20(_stablecoin); // AUDIT: should I save this in a local variable, or just use it as IERC20(_stablecoin) where it is needed?
+        $._stablecoin = stablecoin;
+        $._stablecoinDecimals = stablecoin.decimals();
         $._payoutFee = _payoutFee;
         $._currentPayoutIndex = 0;
     }
@@ -217,46 +224,6 @@ abstract contract RemoraRWAHolderManagement is
     }
 
     /**
-     * @notice Removes rent forwarding
-     * @dev Each holder only forwards to one account, internal function without restriction
-     * @param $ contract storage
-     * @param holder The holder whose payouts should no longer be forwarded
-     */
-    function _removePayoutForwardAddress(
-        HolderManagementStorage storage $,
-        address holder,
-        address forwardedAddress
-    ) internal {
-        if (forwardedAddress != address(0)) {
-            uint256 holderPayout = payoutBalance(holder); // call so any uncalculated rent is given to forwarding address
-            $._holderStatus[holder].forwardPayoutTo = address(0);
-
-            HolderStatus storage forwardedHolder = $._holderStatus[
-                forwardedAddress
-            ];
-            uint256 len = forwardedHolder.forwardedPayouts.length;
-            if (len > 1) {
-                for (uint256 i = 0; i < len; ++i) {
-                    if (forwardedHolder.forwardedPayouts[i] == holder) {
-                        forwardedHolder.forwardedPayouts[i] = forwardedHolder
-                            .forwardedPayouts[len - 1];
-                        break;
-                    }
-                }
-            }
-            forwardedHolder.forwardedPayouts.pop();
-
-            if (balanceOf(holder) == 0 && holderPayout == 0) {
-                deleteUser($, $._holderStatus[holder], holder);
-            }
-            if (
-                balanceOf(forwardedAddress) == 0 &&
-                payoutBalance(forwardedAddress) == 0
-            ) deleteUser($, forwardedHolder, forwardedAddress);
-        }
-    }
-
-    /**
      * @notice Used to set new value for the fixed payout fee.
      * @dev Restricted to authorized accounts
      * @param newFee The new value for the fixed payout fee, in USD, 6 decimals.
@@ -274,8 +241,12 @@ abstract contract RemoraRWAHolderManagement is
      */
     function changeStablecoin(address stablecoin) external restricted {
         if (stablecoin == address(0)) revert InvalidAddress();
+        IERC20 _stablecoin = IERC20(stablecoin);
+        uint8 decimalsUsed = _stablecoin.decimals();
+        if (decimalsUsed < 6) revert InvalidStablecoinDecimalValue();
         HolderManagementStorage storage $ = _getHolderManagementStorage();
-        $._stablecoin = IERC20(stablecoin);
+        $._stablecoin = _stablecoin;
+        $._stablecoinDecimals = decimalsUsed;
         emit StablecoinChanged(stablecoin);
     }
 
@@ -350,6 +321,46 @@ abstract contract RemoraRWAHolderManagement is
     }
 
     /**
+     * @notice Removes rent forwarding
+     * @dev Each holder only forwards to one account, internal function without restriction
+     * @param $ contract storage
+     * @param holder The holder whose payouts should no longer be forwarded
+     */
+    function _removePayoutForwardAddress(
+        HolderManagementStorage storage $,
+        address holder,
+        address forwardedAddress
+    ) internal {
+        if (forwardedAddress != address(0)) {
+            uint256 holderPayout = payoutBalance(holder); // call so any uncalculated rent is given to forwarding address
+            $._holderStatus[holder].forwardPayoutTo = address(0);
+
+            HolderStatus storage forwardedHolder = $._holderStatus[
+                forwardedAddress
+            ];
+            uint256 len = forwardedHolder.forwardedPayouts.length;
+            if (len > 1) {
+                for (uint256 i = 0; i < len; ++i) {
+                    if (forwardedHolder.forwardedPayouts[i] == holder) {
+                        forwardedHolder.forwardedPayouts[i] = forwardedHolder
+                            .forwardedPayouts[len - 1];
+                        break;
+                    }
+                }
+            }
+            forwardedHolder.forwardedPayouts.pop();
+
+            if (balanceOf(holder) == 0 && holderPayout == 0) {
+                deleteUser($._holderStatus[holder]);
+            }
+            if (
+                balanceOf(forwardedAddress) == 0 &&
+                payoutBalance(forwardedAddress) == 0
+            ) deleteUser(forwardedHolder);
+        }
+    }
+
+    /**
      * @notice Allows a holder to claim their payouts.
      * @dev Deducts the fee and transfers the payout via stablecoin or an alternative mechanism.
      * Internal function, to be called within an external wrapper.
@@ -363,7 +374,7 @@ abstract contract RemoraRWAHolderManagement is
         address holder,
         bool useStablecoin,
         bool useCustomFee,
-        uint256 feeValue // AUDIT: doesn't need to be this big, would it be worth making it smaller? to uint32
+        uint256 feeValue
     ) internal {
         HolderManagementStorage storage $ = _getHolderManagementStorage();
         uint256 payoutAmount = payoutBalance(holder);
@@ -372,7 +383,7 @@ abstract contract RemoraRWAHolderManagement is
 
         HolderStatus storage holderStatus = $._holderStatus[holder];
         if (balanceOf(holder) == 0) {
-            deleteUser($, holderStatus, holder);
+            deleteUser(holderStatus);
         } else {
             // else, update their data reflecting the recent claim
             holderStatus.lastPayoutIndexCalculated = holderStatus.isFrozen
@@ -390,7 +401,7 @@ abstract contract RemoraRWAHolderManagement is
             IERC20 stablecoin = $._stablecoin;
             uint256 stablecoinBalance = stablecoin.balanceOf(address(this));
 
-            uint8 numDecimals = stablecoin.decimals();
+            uint8 numDecimals = $._stablecoinDecimals;
             if (numDecimals != 6) {
                 payoutAmount *= 10 ** (numDecimals - 6);
             }
@@ -551,7 +562,7 @@ abstract contract RemoraRWAHolderManagement is
             uint256 fromBalance = balanceOf(from);
             HolderStatus storage fromHolderStatus = $._holderStatus[from];
             if (fromBalance == 0 && payoutBalance(from) == 0) {
-                deleteUser($, fromHolderStatus, from);
+                deleteUser(fromHolderStatus);
                 return;
             }
             if (fromHolderStatus.mostRecentEntry == payoutIndex) {
@@ -584,32 +595,12 @@ abstract contract RemoraRWAHolderManagement is
 
     /**
      * @dev Private function that deletes the data of a user when it is no longer needed.
-     * @param $ Storage variable, sent in so that the holder can be fully deleted.
      * @param holderStatus The holder's HolderStatus struct.
-     * @param holder The address of the holder to be deleted.
      */
-    function deleteUser(
-        HolderManagementStorage storage $,
-        HolderStatus storage holderStatus,
-        address holder
-    ) private {
-        bool signed = (holderStatus.isFrozen) ? false : holderStatus.signedTC;
-
-        if (
-            holderStatus.forwardPayoutTo != address(0) ||
-            holderStatus.forwardedPayouts.length != 0
-        ) {
-            holderStatus.isFrozen = false;
-            holderStatus.isCalculated = false;
-            holderStatus.isHolder = false;
-            holderStatus.frozenIndex = 0;
-            holderStatus.lastPayoutIndexCalculated = 0;
-            holderStatus.mostRecentEntry = 0;
-            holderStatus.frozenTimestamp = 0;
-            holderStatus.calculatedPayout = 0;
-        } else {
-            delete $._holderStatus[holder];
-        }
-        holderStatus.signedTC = signed;
+    function deleteUser(HolderStatus storage holderStatus) private {
+        if (holderStatus.isFrozen) holderStatus.signedTC = false;
+        holderStatus.isHolder = false;
+        holderStatus.isCalculated = false;
+        holderStatus.calculatedPayout = 0;
     }
 }

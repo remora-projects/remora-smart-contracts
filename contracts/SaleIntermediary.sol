@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol"; // AUDIT: should I use the IERC20 that I made?
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {AccessManaged} from "@openzeppelin/contracts/access/manager/AccessManaged.sol";
@@ -235,7 +235,7 @@ contract RemoraSaleIntermediary is AccessManaged, ReentrancyGuard {
         bool useStablecoin = data.useStablecoin;
         uint32 feeValue = SafeCast.toUint32(data.feeValue);
         address holder = data.holder;
-        uint256 len = data.rwaTokens.length; // AUDIT: efficient to have this at 256?
+        uint256 len = data.rwaTokens.length;
 
         for (uint256 i = 0; i < len; ++i) {
             IRwaToken(data.rwaTokens[i]).adminClaimPayout(

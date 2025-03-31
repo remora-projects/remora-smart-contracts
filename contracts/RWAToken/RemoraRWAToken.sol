@@ -37,7 +37,8 @@ contract RemoraRWAToken is
     uint64 pricePerBurnedToken;
     /// @dev Reference to the external allowlist contract for managing user permissions.
     IAllowlist private _allowlist;
-    //Thinking about adding a gap here to save space for another address, oracle smart contract
+    /// @dev saving space for future implementations
+    address[2] __gap;
     /// @dev Mapping that contains addresses that are able to send and recieve tokens without a fee
     mapping(address => bool) private _whitelist;
 
@@ -88,7 +89,7 @@ contract RemoraRWAToken is
             initialAuthority,
             stablecoin,
             wallet,
-            0 //starts at zero, need to update it later
+            0 //starts at zero, will need to update it later
         );
         __UUPSUpgradeable_init();
 
@@ -266,7 +267,7 @@ contract RemoraRWAToken is
         if (_transferFee != 0 && !fromWL && !toWL) {
             HolderManagementStorage storage $ = _getHolderManagementStorage();
             IERC20 stablecoin = $._stablecoin;
-            uint8 numDecimals = stablecoin.decimals();
+            uint8 numDecimals = $._stablecoinDecimals;
             if (numDecimals != 6) {
                 _transferFee *= 10 ** (numDecimals - 6);
             }
@@ -302,7 +303,7 @@ contract RemoraRWAToken is
         if (_transferFee != 0 && !_whitelist[sender] && !fromWL && !toWL) {
             HolderManagementStorage storage $ = _getHolderManagementStorage();
             IERC20 stablecoin = $._stablecoin;
-            uint8 numDecimals = stablecoin.decimals();
+            uint8 numDecimals = $._stablecoinDecimals;
             if (numDecimals != 6) {
                 _transferFee *= 10 ** (numDecimals - 6);
             }
@@ -325,14 +326,12 @@ contract RemoraRWAToken is
         IERC20 stablecoin = $._stablecoin;
         uint256 stablecoinBalance = stablecoin.balanceOf(address(this));
 
+        uint8 numDecimals = $._stablecoinDecimals;
+        if (numDecimals != 6) burnPayout *= 10 ** (numDecimals - 6);
         if (burnPayout > stablecoinBalance) {
             revert InsufficentStablecoinBalance();
         }
 
-        uint8 numDecimals = stablecoin.decimals();
-        if (numDecimals != 6) {
-            burnPayout *= 10 ** (numDecimals - 6);
-        }
         stablecoin.transfer(sender, burnPayout);
     }
 
